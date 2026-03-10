@@ -7,16 +7,19 @@ import os
 # Initialize MCP Server
 mcp = FastMCP("VB6-Graph-Server")
 
-# Global parser instance (singleton for the server)
-# In a real scenario, we might want to reload this or pass a path
+# Global parser instance
 parser = VB6Parser()
-PROJECT_PATH = "sample_project" # Default for now
-parser.parse_project(PROJECT_PATH)
-graph = parser.get_graph()
+graph = None
+
+def load_project(path):
+    global graph
+    parser.parse_project(path)
+    graph = parser.get_graph()
 
 @mcp.tool()
 def get_project_structure():
     """Returns the list of main files and their types extracted from the project."""
+    if graph is None: return "Project not loaded."
     files = [n for n, d in graph.nodes(data=True) if d.get('type') == 'File']
     result = []
     for f in files:
@@ -89,4 +92,7 @@ def trace_ui_event(form_name: str, control_name: str):
     }
 
 if __name__ == "__main__":
+    import sys
+    path = sys.argv[1] if len(sys.argv) > 1 else "sample_project"
+    load_project(path)
     mcp.run()
