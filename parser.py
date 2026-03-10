@@ -27,17 +27,26 @@ class VB6Parser:
 
         # Add Project Node
         project_name = os.path.basename(vbp_file)
+        print(f"[*] Analyzing Project: {project_name}")
         self.graph.add_node(project_name, type="Project", label=project_name)
         save_node(project_name, "Project", vbp_file, "")
 
         # Phase 1: Identify all nodes
+        files_to_parse = []
         for root, _, files in os.walk(directory):
             for file in files:
-                file_path = os.path.join(root, file)
                 if file.lower().endswith(('.bas', '.cls', '.frm')):
-                    self.parse_file(file_path, project_name)
+                    files_to_parse.append(os.path.join(root, file))
+        
+        total_files = len(files_to_parse)
+        print(f"[*] Found {total_files} files to parse.")
+        
+        for i, file_path in enumerate(files_to_parse, 1):
+            print(f"    [{i}/{total_files}] Parsing: {os.path.basename(file_path)}")
+            self.parse_file(file_path, project_name)
         
         # Phase 2: Build Relationships (CALLS, USES, TRIGGERS)
+        print("[*] Building relationships (this may take a while)...")
         self.build_relationships()
 
     def build_relationships(self):
@@ -47,41 +56,55 @@ class VB6Parser:
         variables = [n for n, d in self.graph.nodes(data=True) if d.get('type') == 'Variable']
         controls = [n for n, d in self.graph.nodes(data=True) if d.get('type') == 'UIControl']
 
-        # Pre-calculate method and variable names for faster lookup
-        method_names = {m.split(':')[-1]: m for m in methods}
-        variable_names = {v.split(':')[-1]: v for v in variables}
+        print(f"    - Building lookup maps for {len(methods)} methods and {len(variables)} variables...")
+        # Map simple name to full node_id
+        method_map = {m.split(':')[-1].lower(): m for m in methods}
+        variable_map = {v.split(':')[-1].lower(): v for v in variables}
+        
+        # Keyword list for fast intersection
+        method_keywords = set(method_map.keys())
+        variable_keywords = set(variable_map.keys())
 
-        for method_id in methods:
+        print(f"    - Analyzing {len(methods)} methods bodies...")
+        for i, method_id in enumerate(methods, 1):
+            if i % 500 == 0:
+                print(f"    - Progress: {i}/{len(methods)} methods analyzed.")
+                
             code = self.get_stored_code(method_id)
             if not code: continue
 
-            # Detect CALLS
-            for m_name, m_id in method_names.items():
-                if m_id == method_id: continue # Don't call yourself
-                # Regex for method call (not a definition)
-                # Word boundary, name, and either ( or space/newline
-                if re.search(rf'\b{m_name}\b', code, re.IGNORECASE):
-                    # verify it's not the definition line
-                    lines = code.splitlines()
-                    for line in lines[1:]: # Skip the first line which is the definition
-                        if re.search(rf'\b{m_name}\b', line, re.IGNORECASE):
-                            self.graph.add_edge(method_id, m_id, type="CALLS")
-                            break
+            # Tokenize code simply (alphanumeric + underscore)
+            tokens = set(re.findall(r'\b[a-zA-Z0-9_]+\b', code.lower()))
+            
+            # Skip the first token if it's the method name itself (definition)
+            method_name_simple = method_id.split(':')[-1].lower()
+            if method_name_simple in tokens:
+                tokens.remove(method_name_simple)
 
-            # Detect USES (Variables)
-            for v_name, v_id in variable_names.items():
-                if re.search(rf'\b{v_name}\b', code, re.IGNORECASE):
-                    self.graph.add_edge(method_id, v_id, type="USES")
+            # Find intersection with known methods
+            found_methods = tokens.intersection(method_keywords)
+            for m_key in found_methods:
+                self.graph.add_edge(method_id, method_map[m_key], type="CALLS")
+
+            # Find intersection with known variables
+            found_vars = tokens.intersection(variable_keywords)
+            for v_key in found_vars:
+                # To be safe, verify it's not a local variable or param? 
+                # (Standard VB6 regex approach is simplified as requested)
+                self.graph.add_edge(method_id, variable_map[v_key], type="USES")
 
         # Detect TRIGGERS (UI Control -> Method)
-        # Usually Name_Event (e.g., btnGuardar_Click)
+        print(f"    - Linking {len(controls)} UI controls to event handlers...")
         for control_id in controls:
-            control_name = control_id.split(':')[-1]
-            file_name = control_id.split(':')[0]
+            parts = control_id.split(':')
+            file_name = parts[0]
+            control_name = parts[-1]
+            
             # Look for methods in the same file starting with control_name_
-            for method_id in methods:
-                if method_id.startswith(f"{file_name}:{control_name}_"):
-                    self.graph.add_edge(control_id, method_id, type="TRIGGERS")
+            prefix = f"{file_name}:{control_name}_".lower()
+            for m_id in methods:
+                if m_id.lower().startswith(prefix):
+                    self.graph.add_edge(control_id, m_id, type="TRIGGERS")
 
     def get_stored_code(self, node_id):
         # Helper to get code from SQLite via db.py
