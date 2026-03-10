@@ -42,9 +42,18 @@ def export_graph(graph, output_path="visualizacion.html"):
     net.save_graph(output_path)
     print(f"Visualization saved to {output_path}")
 
+def export_for_gephi(graph, output_path="visualizacion.graphml"):
+    """Exporta el grafo a un formato estándar para abrir en Gephi"""
+    # NetworkX soporta GraphML nativamente
+    nx.write_graphml(graph, output_path)
+    print(f"Grafo exportado para Gephi en: {output_path}")
+
 if __name__ == "__main__":
     import sys
     parser = VB6Parser()
     path = sys.argv[1] if len(sys.argv) > 1 else "sample_project"
     parser.parse_project(path)
-    export_graph(parser.get_graph())
+    
+    graph = parser.get_graph()
+    export_graph(graph)
+    export_for_gephi(graph)
