@@ -1,13 +1,15 @@
 import os
 import re
 import networkx as nx
-from db import init_db, save_node
+from db import init_db, save_node, set_db_name
 import sqlite3
 
 class VB6Parser:
-    def __init__(self):
+    def __init__(self, project_name=None):
         self.graph = nx.DiGraph()
         self.project_path = None
+        if project_name:
+            set_db_name(project_name)
         init_db()
 
     def find_vbp(self, directory):
@@ -26,7 +28,10 @@ class VB6Parser:
             return
 
         # Add Project Node
-        project_name = os.path.basename(vbp_file)
+        project_name = os.path.basename(directory.rstrip(os.sep))
+        set_db_name(project_name)
+        init_db()
+        
         print(f"[*] Analyzing Project: {project_name}")
         self.graph.add_node(project_name, type="Project", label=project_name)
         save_node(project_name, "Project", vbp_file, "")

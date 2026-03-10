@@ -4,10 +4,43 @@ from parser import VB6Parser
 
 def export_graph(graph, output_path="visualizacion.html"):
     """Exports a NetworkX graph to an interactive HTML file using PyVis."""
-    net = Network(height="750px", width="100%", bgcolor="#222222", font_color="white", directed=True)
+    net = Network(height="100vh", width="100%", bgcolor="#222222", font_color="white", directed=True)
     
-    # Configure physics for better layout
-    net.force_atlas_2based()
+    # Configuración de alto rendimiento para grafos masivos (>1000 nodos)
+    net.set_options("""
+    var options = {
+      "nodes": {
+        "shape": "dot",
+        "size": 10
+      },
+      "edges": {
+        "smooth": false,
+        "arrows": {
+          "to": {
+            "enabled": true,
+            "scaleFactor": 0.5
+          }
+        }
+      },
+      "physics": {
+        "barnesHut": {
+          "gravitationalConstant": -30000,
+          "centralGravity": 0.3,
+          "springLength": 95,
+          "springConstant": 0.04,
+          "damping": 0.09,
+          "avoidOverlap": 0
+        },
+        "stabilization": {
+          "enabled": true,
+          "iterations": 1000,
+          "updateInterval": 100,
+          "onlyDynamicEdges": false,
+          "fit": true
+        }
+      }
+    }
+    """)
 
     # Define colors for different node types
     color_map = {
@@ -50,10 +83,15 @@ def export_for_gephi(graph, output_path="visualizacion.graphml"):
 
 if __name__ == "__main__":
     import sys
-    parser = VB6Parser()
+    import os
     path = sys.argv[1] if len(sys.argv) > 1 else "sample_project"
+    
+    # Derive project name from directory
+    project_name = os.path.basename(path.rstrip(os.sep))
+    
+    parser = VB6Parser(project_name=project_name)
     parser.parse_project(path)
     
     graph = parser.get_graph()
-    export_graph(graph)
-    export_for_gephi(graph)
+    export_graph(graph, output_path=f"{project_name}.html")
+    export_for_gephi(graph, output_path=f"{project_name}.graphml")

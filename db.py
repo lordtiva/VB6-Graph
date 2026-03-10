@@ -1,11 +1,20 @@
 import sqlite3
 import os
 
-DB_NAME = "vb6_code.db"
+_DB_NAME = "vb6_code.db"
+
+def set_db_name(name):
+    global _DB_NAME
+    if not name.endswith('.db'):
+        name += '.db'
+    _DB_NAME = name
+
+def get_db_name():
+    return _DB_NAME
 
 def init_db():
     """Initializes the SQLite database with the code_nodes table."""
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(get_db_name())
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS code_nodes (
@@ -20,7 +29,7 @@ def init_db():
 
 def save_node(node_id, node_type, file_path, code_content):
     """Saves or updates a code node in the database."""
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(get_db_name())
     cursor = conn.cursor()
     cursor.execute("""
         INSERT OR REPLACE INTO code_nodes (node_id, node_type, file_path, code_content)
@@ -31,7 +40,7 @@ def save_node(node_id, node_type, file_path, code_content):
 
 def get_node_code(node_id):
     """Retrieves the code content for a given node_id."""
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(get_db_name())
     cursor = conn.cursor()
     cursor.execute("SELECT code_content FROM code_nodes WHERE node_id = ?", (node_id,))
     result = cursor.fetchone()

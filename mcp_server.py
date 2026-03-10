@@ -13,6 +13,8 @@ graph = None
 
 def load_project(path):
     global graph
+    project_name = os.path.basename(path.rstrip(os.sep))
+    parser.__init__(project_name=project_name)
     parser.parse_project(path)
     graph = parser.get_graph()
 

@@ -59,7 +59,7 @@ python visualizer.py <path_to_vb6_project_directory>
 ```
 
 *Example:* `python visualizer.py sample_project`
-*Result: Generates `visualizacion.html` (interactive graph).*
+*Result: Generates `visualizacion.html` (interactive graph) AND `visualizacion.graphml` (for professional tools like Gephi).*
 
 ### 2. Run the MCP Server
 
