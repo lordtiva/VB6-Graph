@@ -5,7 +5,6 @@ VB6-Graph is a tool designed to parse legacy Visual Basic 6 projects, generate a
 ## 🚀 Features
 
 - **Deep Parsing**: Extracts Projects, Files, Methods (Sub, Function, Property), Global Variables, and UI Controls using advanced Regex.
-
 - **Relationship Mapping**:
   - `CONTAINS`: Structural hierarchy.
   - `CALLS`: Method-to-method invocation tracing.
@@ -28,26 +27,26 @@ VB6-Graph is a tool designed to parse legacy Visual Basic 6 projects, generate a
 
 1. **Clone the repository**:
 
-    ```bash
-    git clone <repository-url>
-    cd VB6-Graph
-    ```
+   ```bash
+   git clone <repository-url>
+   cd VB6-Graph
+   ```
 
 2. **Create and activate a Virtual Environment**:
 
-    ```bash
-    python -m venv .venv
-    # Windows:
-    .venv\Scripts\activate
-    # Linux/MacOS:
-    source .venv/bin/activate
-    ```
+   ```bash
+   python -m venv .venv
+   # Windows:
+   .venv\Scripts\activate
+   # Linux/MacOS:
+   source .venv/bin/activate
+   ```
 
 3. **Install dependencies**:
 
-    ```bash
-    pip install -r requirements.txt
-    ```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## 🎮 Usage
 
@@ -59,22 +58,25 @@ To generate the graph and the interactive HTML visualization:
 python visualizer.py <path_to_vb6_project_directory>
 ```
 
-*Result: Generates `visualizacion.html` which you can open in any browser.*
+*Example:* `python visualizer.py sample_project`
+*Result: Generates `visualizacion.html` (interactive graph).*
 
 ### 2. Run the MCP Server
 
 To expose the graph tools to an MCP-compatible client (like Claude Desktop or another LLM agent):
 
 ```bash
-python mcp_server.py
+python mcp_server.py <path_to_vb6_project_directory>
 ```
+
+*Example:* `python mcp_server.py sample_project`
 
 #### Available MCP Tools
 
-- `get_project_structure()`: Lists files and their contents.
-- `get_method_dependencies(method_name)`: Traces who calls a method and what it calls.
-- `get_source_code(node_id)`: Retrieves the literal code for any node.
-- `trace_ui_event(form_name, control_name)`: Maps a UI element to its logic.
+- `get_project_structure()`: Lists files and their associated **methods**.
+- `get_method_dependencies(method_name)`: Traces `CALLS` (upwards and downwards).
+- `get_source_code(node_id)`: Retrieves the exact code for any node (Method, Variable, UIControl).
+- `trace_ui_event(form_name, control_name)`: Maps a UI element to its business logic.
 
 ## 📁 Project Structure
 
