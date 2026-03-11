@@ -75,6 +75,33 @@ def export_graph(graph, output_path="visualizacion.html"):
     net.save_graph(output_path)
     print(f"Visualization saved to {output_path}")
 
+def export_architecture_graph(graph, output_path="arquitectura.html"):
+    """Exporta un grafo donde solo se ven los Archivos y cómo dependen unos de otros"""
+    arch_graph = nx.DiGraph()
+    
+    # 1. Agregar solo nodos de tipo Archivo
+    files = [n for n, d in graph.nodes(data=True) if d.get('type') == 'File']
+    for f in files:
+        arch_graph.add_node(f, type="File", label=f)
+        
+    # 2. Deducir relaciones entre archivos basándose en las llamadas de sus métodos
+    for u, v, d in graph.edges(data=True):
+        if d.get('type') == 'CALLS':
+            # u y v son métodos (ej: Form1:Load, Modulo1:Calcular)
+            # Extraemos a qué archivo pertenece cada uno
+            file_u = u.split(':')[0]
+            file_v = v.split(':')[0]
+            
+            if file_u != file_v and file_u in files and file_v in files:
+                # Si el archivo u llama al archivo v, creamos la arista
+                if arch_graph.has_edge(file_u, file_v):
+                    arch_graph[file_u][file_v]['weight'] += 1
+                else:
+                    arch_graph.add_edge(file_u, file_v, weight=1, type="DEPENDS_ON")
+    
+    # Exportar este grafo más pequeño y limpio
+    export_graph(arch_graph, output_path)
+
 def export_for_gephi(graph, output_path="visualizacion.graphml"):
     """Exporta el grafo a un formato estándar para abrir en Gephi"""
     # NetworkX soporta GraphML nativamente
@@ -93,5 +120,6 @@ if __name__ == "__main__":
     parser.parse_project(path)
     
     graph = parser.get_graph()
+    export_architecture_graph(graph, output_path=f"{project_name}_architecture.html")
     export_graph(graph, output_path=f"{project_name}.html")
     export_for_gephi(graph, output_path=f"{project_name}.graphml")
