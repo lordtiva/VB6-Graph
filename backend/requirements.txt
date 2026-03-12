@@ -6,3 +6,4 @@ uvicorn
 typer
 numpy
 scipy
+igraph

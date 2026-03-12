@@ -1,5 +1,6 @@
 import os
 import networkx as nx
+import igraph as ig
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Any
@@ -62,10 +63,40 @@ def get_graph():
         analyzer = CodeAnalyzer(graph)
         communities = analyzer.detect_communities()
         
-        # Calculate layout on the backend to avoid freezing the frontend
-        # For very large graphs, this might need optimization/caching
-        print(f"[*] Calculating layout for {len(graph.nodes)} nodes...")
-        pos = nx.spring_layout(graph, iterations=50, k=1/len(graph.nodes)**0.5)
+        # Calculate layout using igraph for 10x speedup and better math
+        print(f"[*] Calculating high-performance layout for {len(graph.nodes)} nodes...")
+        
+        # Convert NetworkX graph to igraph
+        node_list = list(graph.nodes())
+        node_index = {node: i for i, node in enumerate(node_list)}
+        
+        # Filter edges to ensure both nodes exist in the node_list
+        edges = []
+        for u, v in graph.edges():
+            if u in node_index and v in node_index:
+                edges.append((node_index[u], node_index[v]))
+        
+        g_ig = ig.Graph(len(node_list), edges, directed=True)
+        
+        # Use Fruchterman-Reingold layout (C-optimized)
+        layt = g_ig.layout_fruchterman_reingold(niter=1000)
+        
+        # Normalize coordinates to [-1, 1] for consistent frontend scaling
+        coords = list(zip(*layt)) # [[x1, x2...], [y1, y2...]]
+        if coords:
+            min_x, max_x = min(coords[0]), max(coords[0])
+            min_y, max_y = min(coords[1]), max(coords[1])
+            range_x = (max_x - min_x) if max_x != min_x else 1
+            range_y = (max_y - min_y) if max_y != min_y else 1
+
+            pos = {node_list[i]: (
+                (layt[i][0] - min_x) / range_x * 2 - 1,
+                (layt[i][1] - min_y) / range_y * 2 - 1
+            ) for i in range(len(node_list))}
+        else:
+            pos = {node: [0, 0] for node in node_list}
+
+        print(f"[*] Layout calculated for {len(pos)} nodes.")
         
         # Format for Sigma.js/Graphology
         nodes = []
@@ -84,9 +115,9 @@ def get_graph():
                 }
             })
             
-        edges = []
+        edges_out = []
         for u, v, d in graph.edges(data=True):
-            edges.append({
+            edges_out.append({
                 "source": u,
                 "target": v,
                 "attributes": {
@@ -94,8 +125,11 @@ def get_graph():
                 }
             })
             
-        return {"nodes": nodes, "edges": edges}
+        print(f"[*] Returning {len(nodes)} nodes and {len(edges_out)} edges.")
+        return {"nodes": nodes, "edges": edges_out}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/code/{node_id:path}")
