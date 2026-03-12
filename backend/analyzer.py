@@ -106,11 +106,89 @@ class CodeAnalyzer:
         except Exception as e:
             return [[f"Error detectando componentes: {str(e)}"]]
 
+    def detect_communities(self):
+        """
+        Detección de "Comunidades" (Microservicios ocultos) usando el algoritmo de Louvain.
+        Requiere un grafo no dirigido.
+        """
+        try:
+            # Louvain requires an undirected graph
+            undirected_graph = self.graph.to_undirected()
+            communities = nx.community.louvain_communities(undirected_graph)
+            
+            # Map each node to a community ID
+            node_to_community = {}
+            for i, community in enumerate(communities):
+                for node in community:
+                    node_to_community[node] = i
+            
+            print(f"[*] Detected {len(communities)} communities in graph.")
+            return node_to_community
+        except Exception as e:
+            print(f"Error detectando comunidades: {str(e)}")
+            return {}
+
+    def get_impact_analysis(self, node_id):
+        """
+        Calcula el "Blast Radius" de modificar un nodo.
+        Retorna quiénes dependen de este nodo directa e indirectamente.
+        """
+        if node_id not in self.graph:
+            return {"error": f"Node {node_id} not found."}
+            
+        ntype = self.graph.nodes[node_id].get('type', 'Unknown')
+        
+        # Start set for ancestors search
+        targets = {node_id}
+        
+        # If it's a File, anyone depending on its members is also impacted
+        if ntype == 'File':
+            # Add all members (successors in containment edges usually)
+            members = [v for u, v, d in self.graph.out_edges(node_id, data=True) 
+                       if d.get('type') in ('CONTAINS', 'Unknown', 'Method')]
+            # In our current parser, it seems File -> Method is the structure
+            targets.update(members)
+
+        impacted_nodes = set()
+        for t in targets:
+            if t in self.graph:
+                impacted_nodes.update(nx.ancestors(self.graph, t))
+        
+        # Remove the targets themselves and the project node from the list of 'affected' entities
+        # usually people want to see external impact
+        impacted_nodes -= targets
+        
+        # Categorize impacts
+        files = set()
+        methods = set()
+        ui_controls = set()
+        other = 0
+        
+        for node in impacted_nodes:
+            t = self.graph.nodes[node].get('type', 'Unknown')
+            if t == 'File':
+                files.add(node)
+            elif t == 'Method':
+                methods.add(node)
+            elif t == 'UIControl':
+                ui_controls.add(node)
+            elif t != 'Project':
+                other += 1
+                
+        return {
+            "node_id": node_id,
+            "impact_count": len(files) + len(methods) + len(ui_controls) + other,
+            "files": list(files),
+            "methods": list(methods),
+            "ui_controls": list(ui_controls)
+        }
+
     def get_analysis_summary(self):
         return {
             "dead_code": self.detect_dead_code(),
             "god_objects": self.detect_god_objects(),
-            "circular_dependencies": self.detect_circular_dependencies()
+            "circular_dependencies": self.detect_circular_dependencies(),
+            "communities": self.detect_communities()
         }
 
 if __name__ == "__main__":

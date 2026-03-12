@@ -21,6 +21,7 @@ const App: React.FC = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedLayout, setSelectedLayout] = useState<LayoutType>('forceAtlas2');
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
+  const [communityView, setCommunityView] = useState(false);
 
   // Derive unique node types from graph data
   const availableTypes = useMemo(() => {
@@ -130,7 +131,6 @@ const App: React.FC = () => {
         >
           <RefreshCw className="w-5 h-5" />
         </button>
-
         {focusedNodeId && (
           <button 
             onClick={() => setFocusedNodeId(null)} 
@@ -140,6 +140,17 @@ const App: React.FC = () => {
             <Eye className="w-5 h-5" />
           </button>
         )}
+
+        <button 
+          onClick={() => setCommunityView(!communityView)} 
+          className={cn(
+            "p-2 rounded-lg transition-all duration-200",
+            communityView ? "bg-[#7ee787]/10 text-[#7ee787]" : "hover:bg-[#30363d] text-[#8b949e] hover:text-[#c9d1d9]"
+          )}
+          title="Toggle Community View (Microservices)"
+        >
+          <Layers className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Filter Sidebar (Collapsible) */}
@@ -296,6 +307,7 @@ const App: React.FC = () => {
                 onNodeClick={handleNodeClick} 
                 focusedNodeId={focusedNodeId}
                 layout={selectedLayout}
+                communityView={communityView}
               />
             </div>
           )}

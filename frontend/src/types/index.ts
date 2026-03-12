@@ -8,6 +8,7 @@ export interface NodeAttributes {
   y: number;
   color?: string;
   loc?: number;
+  community?: number;
 }
 
 export interface GraphNode {
@@ -37,4 +38,5 @@ export interface AnalysisResults {
     score: number;
   }>;
   circular_dependencies: string[][];
+  communities?: Record<string, number>;
 }

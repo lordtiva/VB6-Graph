@@ -13,6 +13,7 @@ interface GraphViewProps {
   hiddenTypes: Set<string>;
   focusedNodeId?: string | null;
   layout?: LayoutType;
+  communityView?: boolean;
 }
 
 export const TYPE_COLORS: Record<string, string> = {
@@ -24,7 +25,18 @@ export const TYPE_COLORS: Record<string, string> = {
   Unknown: '#8b949e',
 };
 
-const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, focusedNodeId, layout = 'forceAtlas2' }) => {
+// Vibrant color palette for communities
+const COMMUNITY_COLORS = [
+  '#ff7b72', '#79c0ff', '#7ee787', '#ffa657', '#d2a8ff', '#a5d6ff', '#ffa198', '#ffab70', 
+  '#f2cc60', '#58a6ff', '#3fb950', '#d29922', '#bc8cff', '#1f6feb', '#238636', '#9e6a03',
+  '#8e1519', '#216e39', '#055d9c', '#76448a', '#117864', '#943126', '#1a5276', '#1d8348'
+];
+
+const getCommunityColor = (community: number) => {
+  return COMMUNITY_COLORS[community % COMMUNITY_COLORS.length];
+};
+
+const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, focusedNodeId, layout = 'forceAtlas2', communityView = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<Sigma | null>(null);
 
@@ -35,7 +47,7 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
 
     // Add nodes
     data.nodes.forEach((node) => {
-      const { type, loc, x, y, ...restAttributes } = node.attributes;
+      const { type, loc, x, y, community, ...restAttributes } = node.attributes;
       const color = TYPE_COLORS[type] || TYPE_COLORS.Unknown;
       
       // Calculate size based on LOC using a log scale to handle Argentum's massive files
@@ -44,7 +56,8 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
       graph.addNode(node.key, {
         ...restAttributes,
         nodeType: type,
-        color,
+        community,
+        color, // Default to type color
         size: baseSize,
         x: x || Math.random() * 100,
         y: y || Math.random() * 100,
@@ -85,7 +98,7 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
         rendererRef.current = null;
       }
     };
-  }, [data, onNodeClick]);
+  }, [data, onNodeClick]); // REMOVED communityView dependency to avoid rebuilding graph
 
   // Handle Layout switching
   useEffect(() => {
@@ -131,15 +144,22 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
       if (hiddenTypes.has(res.nodeType)) {
         res.hidden = true;
       }
+
+      // 1. Color Logic (Community View vs Type Color)
+      if (communityView && res.community !== undefined && res.community !== -1) {
+        res.color = getCommunityColor(res.community);
+      } else {
+        res.color = TYPE_COLORS[res.nodeType] || TYPE_COLORS.Unknown;
+      }
       
-      // If there is a focused node, dim others but keep neighbors visible
+      // 2. Focused Node Logic
       if (focusedNodeId && graph.hasNode(focusedNodeId)) {
         const isNeighbor = graph.areNeighbors(node, focusedNodeId);
         const isFocus = node === focusedNodeId;
 
         if (isFocus) {
           res.highlighted = true;
-          res.size = (res.size || 5) * 2.0; // Make focus node even larger
+          res.size = (res.size || 5) * 2.5; 
           res.zIndex = 1000;
         } else if (isNeighbor) {
           res.label = res.label || node;
@@ -148,9 +168,9 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
           res.zIndex = 500;
         } else {
           res.label = '';
-          res.color = '#161b22';
+          res.color = '#1f2937'; // Slightly lighter than pure black to be sure it's not a bug
           res.opacity = 0.05;
-          res.size = 2; // DRASTICALLY SHRINK inactive nodes to prevent overlap
+          res.size = 2;
           res.zIndex = -1;
         }
       }
@@ -189,7 +209,7 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
     });
 
     renderer.refresh();
-  }, [hiddenTypes, focusedNodeId]);
+  }, [hiddenTypes, focusedNodeId, communityView]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 };
