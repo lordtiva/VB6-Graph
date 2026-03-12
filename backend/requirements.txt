@@ -1,0 +1,8 @@
+networkx
+pyvis
+mcp
+fastapi
+uvicorn
+typer
+numpy
+scipy

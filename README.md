@@ -1,91 +1,104 @@
-# VB6-Graph: Code Property Graph for Legacy Visual Basic 6
+# VB6-Graph: Enterprise Code Analysis for Legacy Visual Basic 6
 
-VB6-Graph is a tool designed to parse legacy Visual Basic 6 projects, generate a **Code Property Graph (CPG)**, and expose it via the **Model Context Protocol (MCP)** for AI-assisted analysis and an interactive HTML visualization for humans.
+VB6-Graph es una plataforma profesional para el análisis de arquitectura y deuda técnica en proyectos masivos de Visual Basic 6. Utiliza un motor de **Code Property Graph (CPG)** para visualizar dependencias y detectar "Code Smells" mediante algoritmos de grafos.
 
-## 🚀 Features
+## 🚀 Características
 
-- **Deep Parsing**: Extracts Projects, Files, Methods (Sub, Function, Property), Global Variables, and UI Controls using advanced Regex.
-- **Relationship Mapping**:
-  - `CONTAINS`: Structural hierarchy.
-  - `CALLS`: Method-to-method invocation tracing.
-  - `USES`: Global variable usage.
-  - `TRIGGERS`: UI Control to event handler mapping (e.g., `CommandButton` -> `_Click`).
-- **Dual Exposure**:
-  - **LLM Ready**: Official MCP SDK server to provide tools to AI models.
-  - **Human Friendly**: Interactive 2D/3D graph visualization using PyVis.
-- **Hybrid Storage**: Fast in-memory relationships (NetworkX) and persistent source code storage (SQLite).
+- **Análisis de Deuda Técnica**: Detección automática de Código Muerto, God Objects y Ciclos de Dependencia.
+- **Visualización WebGL**: Dashboard interactivo capaz de manejar miles de nodos mediante **Sigma.js**.
+- **Motor de Grafo**: Basado en **NetworkX** para tracing de llamadas (`CALLS`), uso de variables (`USES`) y eventos UI (`TRIGGERS`).
+- **MCP Integration**: Expone herramientas de análisis para modelos de IA (Claude, GPT).
 
-## 🛠️ Tech Stack
+## 🛠️ Stack Tecnológico
 
-- **Language**: Python 3.11+
-- **Graph Engine**: [NetworkX](https://networkx.org/)
-- **Storage**: SQLite3
-- **MCP Framework**: [Model Context Protocol Python SDK](https://github.com/modelcontextprotocol/python-sdk)
-- **Visualization**: [PyVis](https://pyvis.readthedocs.io/)
+- **Backend**: Python 3.11+, Typer (CLI), FastAPI (API REST), NetworkX, SQLite.
+- **Frontend**: React 18, TypeScript, Vite, Sigma.js, Prism.js.
 
-## 📥 Installation & Setup
+## 📥 Instalación
 
-1. **Clone the repository**:
+1. **Clonar el repositorio**:
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/lordtiva/VB6-Graph.git
    cd VB6-Graph
    ```
 
-2. **Create and activate a Virtual Environment**:
+2. **Backend Setup**:
 
    ```bash
-   python -m venv .venv
+   python -m venv backend/.venv
    # Windows:
-   .venv\Scripts\activate
+   backend\.venv\Scripts\activate
    # Linux/MacOS:
-   source .venv/bin/activate
+   source backend/.venv/bin/activate
+
+   pip install -r backend/requirements.txt
    ```
 
-3. **Install dependencies**:
+3. **Frontend Setup**:
 
    ```bash
-   pip install -r requirements.txt
+   cd frontend
+   npm install
+   npm run build
+   cd ..
    ```
 
-## 🎮 Usage
+## 🎮 Guía de Uso
 
-### 1. Parse and Visualize
+El proyecto se gestiona íntegramente a través de la CLI unificada en `backend/main.py`.
 
-To generate the graph and the interactive HTML visualization:
+### Fase 1: Parseo del Código
 
-```bash
-python visualizer.py <path_to_vb6_project_directory>
-```
-
-*Example:* `python visualizer.py sample_project`
-*Result: Generates `visualizacion.html` (interactive graph) AND `visualizacion.graphml` (for professional tools like Gephi).*
-
-### 2. Run the MCP Server
-
-To expose the graph tools to an MCP-compatible client (like Claude Desktop or another LLM agent):
+Analiza un directorio de código VB6 y genera la base de datos y el grafo de arquitectura.
 
 ```bash
-python mcp_server.py <path_to_vb6_project_directory>
+python backend/main.py parse <directorio_proyecto_vb6>
 ```
 
-*Example:* `python mcp_server.py sample_project`
+*Los archivos generados (`.db`, `.graphml`) se guardarán automáticamente en la carpeta `/output`.*
 
-#### Available MCP Tools
+### Fase 2: Análisis de Deuda Técnica
 
-- `get_project_structure()`: Lists files and their associated **methods**.
-- `get_method_dependencies(method_name)`: Traces `CALLS` (upwards and downwards).
-- `get_source_code(node_id)`: Retrieves the exact code for any node (Method, Variable, UIControl).
-- `trace_ui_event(form_name, control_name)`: Maps a UI element to its business logic.
+Genera un informe detallado sobre la salud del código.
 
-## 📁 Project Structure
+```bash
+python backend/main.py analyze
+```
 
-- `parser.py`: The core engine that reads VB6 files and builds the NetworkX graph.
-- `db.py`: SQLite interface for storing and retrieving source code blocks.
-- `mcp_server.py`: FastMCP implementation for AI tool exposure.
-- `visualizer.py`: PyVis exporter for the interactive HTML graph.
-- `sample_project/`: A minimal VB6 project for testing purposes.
+*Muestra un resumen por consola y genera un reporte JSON detallado en `/output` (ej. `Proyecto_analysis.json`).*
 
-## 📄 License
+### Fase 3: Dashboard Interactivo
+
+Inicia el ecosistema completo (API + UI).
+
+1. **Terminal 1 (API)**:
+
+   ```bash
+   python backend/main.py ui
+   ```
+
+2. **Terminal 2 (Frontend)**:
+
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+*Accede a `http://localhost:5173` para explorar el grafo de arquitectura y visualizar el código fuente.*
+
+### Fase 4: Servidor MCP (Para IAs)
+
+```bash
+python backend/main.py mcp <directorio_proyecto_vb6>
+```
+
+## 📁 Estructura del Proyecto
+
+- `backend/`: Código Python (CLI, API, Parser, Analyzer).
+- `frontend/`: Aplicación React + Sigma.js para visualización.
+- `output/`: Directorio de salida para bases de datos, grafos y reportes de análisis.
+
+## 📄 Licencia
 
 MIT

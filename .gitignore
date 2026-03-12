@@ -1,8 +1,8 @@
 .venv/
 __pycache__/
+output/
 *.py[cod]
 *$py.class
 *.db
-*.html
 *.graphml
-sample_project/
+argentum-online-server/

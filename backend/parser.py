@@ -29,8 +29,6 @@ class VB6Parser:
 
         # Add Project Node
         project_name = os.path.basename(directory.rstrip(os.sep))
-        set_db_name(project_name)
-        init_db()
         
         print(f"[*] Analyzing Project: {project_name}")
         self.graph.add_node(project_name, type="Project", label=project_name)
