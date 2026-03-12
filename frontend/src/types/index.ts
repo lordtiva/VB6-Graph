@@ -7,6 +7,7 @@ export interface NodeAttributes {
   x: number;
   y: number;
   color?: string;
+  loc?: number;
 }
 
 export interface GraphNode {

@@ -1,8 +1,0 @@
-Mis sugerencias para el siguiente nivel de tu herramienta:
-Puesto que la base ya es sumamente estable con la estructura React funcional, considero que los siguientes añadidos (te recomiendo elegir 1 o 2 de momento) convertirían el proyecto de una simple "visualización" a una seria Herramienta de Análisis Estático:
-
-Barra de Búsqueda: Tienes miles de nodos en Argentum. Si quieres ver cómo funciona el archivo Declaraciones.bas o el método HandleLogin, buscarlo a mano en ese universo es casi imposible. Sugiero que creemos una pequeña barra superior desde la cual puedas escribir nombres y el grafo vuele e ilumine ese nodo concreto.
-Interactividad del Grafo ("Dimming"): Actualmente cuando seleccionas un nodo se muestra su código. Si le agregamos un estado de "Atenuar el resto", al dar clic en un archivo podríamos oscurecer el background y solamente dejar brillantes al nodo clickeado y a todos los que tienen conexión directa con él.
-Des-Selección: Al hacer un doble clic en cualquier espacio vacío oscuro del grafo intergaláctico, que la cámara se aleje, encuadre de forma global y vacíe el panel derecho.
-Métricas Generales en el Panel de Smells: En la pestaña "Code Smells", en lugar de solo listar los errores (que puede estar vacío al inicio), dibujar algunas "Cards" de resumen: "Total de Nodos", "Total de Métodos", "Mayor Complejidad Ciclomática detectada".
-

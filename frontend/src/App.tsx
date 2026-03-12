@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import GraphView, { TYPE_COLORS } from './components/GraphView';
+import GraphView, { TYPE_COLORS, LayoutType } from './components/GraphView';
 import CodeViewer from './components/CodeViewer';
 import AnalysisPanel from './components/AnalysisPanel';
 import { useDashboard } from './hooks/useDashboard';
-import { Layout, Code2, ShieldAlert, RefreshCw, Layers, Filter, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
+import { Layout, Code2, ShieldAlert, RefreshCw, Layers, Filter, Eye, EyeOff, ChevronDown, ChevronUp, Search, X, Shuffle, Circle, Network } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -16,6 +16,11 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'code' | 'analysis'>('code');
   const [legendOpen, setLegendOpen] = useState(true);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [selectedLayout, setSelectedLayout] = useState<LayoutType>('forceAtlas2');
+  const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
 
   // Derive unique node types from graph data
   const availableTypes = useMemo(() => {
@@ -24,6 +29,15 @@ const App: React.FC = () => {
     graphData.nodes.forEach(n => types.add(n.attributes.type || 'Unknown'));
     return Array.from(types).sort();
   }, [graphData]);
+
+  // Search results
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim() || !graphData) return [];
+    const query = searchQuery.toLowerCase();
+    return graphData.nodes
+      .filter(node => node.attributes.label.toLowerCase().includes(query))
+      .slice(0, 50); // Limit to 50 results for performance
+  }, [searchQuery, graphData]);
 
   const toggleTypeVisibility = (type: string) => {
     setHiddenTypes(prev => {
@@ -35,6 +49,7 @@ const App: React.FC = () => {
   };
 
   const handleNodeClick = useCallback((id: string) => {
+    setFocusedNodeId(id);
     fetchCode(id);
     setActiveTab('code');
   }, [fetchCode]);
@@ -68,6 +83,46 @@ const App: React.FC = () => {
           <Filter className="w-5 h-5" />
         </button>
 
+        <div className="relative">
+          <button 
+            onClick={() => setLayoutMenuOpen(!layoutMenuOpen)} 
+            className={cn(
+              "p-2 rounded-lg transition-all duration-200",
+              layoutMenuOpen ? "bg-[#ffa657]/10 text-[#ffa657]" : "hover:bg-[#30363d] text-[#8b949e] hover:text-[#c9d1d9]"
+            )}
+            title="Graph Physics / Layout"
+          >
+            {selectedLayout === 'forceAtlas2' && <Network className="w-5 h-5" />}
+            {selectedLayout === 'circular' && <Circle className="w-5 h-5" />}
+          </button>
+          
+          {layoutMenuOpen && (
+            <div className="absolute left-14 top-0 w-48 bg-[#161b22] border border-[#30363d] rounded-xl shadow-2xl z-[100] p-1 animate-in slide-in-from-left-2 duration-200">
+              {[
+                { id: 'forceAtlas2', label: 'Force Atlas (Structural)', icon: Network },
+                { id: 'circular', label: 'Circular (Radial)', icon: Circle }
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setSelectedLayout(item.id as LayoutType);
+                    setLayoutMenuOpen(false);
+                  }}
+                  className={cn(
+                    "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-xs font-medium transition-colors text-left",
+                    selectedLayout === item.id 
+                      ? "bg-[#58a6ff]/10 text-[#58a6ff]" 
+                      : "text-[#8b949e] hover:bg-[#30363d] hover:text-[#c9d1d9]"
+                  )}
+                >
+                  <item.icon className="w-4 h-4" />
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <button 
           onClick={() => refreshGraph()} 
           className="p-2 hover:bg-[#30363d] rounded-lg transition-colors text-[#8b949e] hover:text-[#c9d1d9]"
@@ -75,6 +130,16 @@ const App: React.FC = () => {
         >
           <RefreshCw className="w-5 h-5" />
         </button>
+
+        {focusedNodeId && (
+          <button 
+            onClick={() => setFocusedNodeId(null)} 
+            className="p-2 bg-[#58a6ff]/20 text-[#58a6ff] hover:bg-[#58a6ff]/30 rounded-lg transition-all animate-in zoom-in duration-200"
+            title="Clear Selection"
+          >
+            <Eye className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Filter Sidebar (Collapsible) */}
@@ -150,12 +215,77 @@ const App: React.FC = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Middle Panel: Graph */}
         <div className="relative flex-1 h-full min-w-0 border-r border-[#30363d] bg-black/20">
-          {/* Title overlay */}
-          <div className="absolute top-4 left-4 z-50 glass px-4 py-2 rounded-lg pointer-events-none">
-            <h1 className="text-sm font-bold tracking-tight flex items-center">
-              <Layers className="w-4 h-4 mr-2" />
-              VB6-Graph <span className="text-[#8b949e] font-normal ml-2">Argentum Online Server</span>
-            </h1>
+          {/* Top Control Layer - Prevents overlap of title and search */}
+          <div className="absolute top-4 left-4 right-4 z-50 flex items-start justify-between pointer-events-none">
+            {/* Title overlay */}
+            <div className="glass px-4 py-2 rounded-xl border-[#30363d]/50 pointer-events-auto hidden sm:flex items-center shadow-2xl">
+              <h1 className="text-xs font-bold tracking-widest uppercase flex items-center text-[#8b949e]">
+                <Layers className="w-3.5 h-3.5 mr-2 text-[#58a6ff]" />
+                VB6-Graph <span className="mx-2 text-[#30363d]">|</span> <span className="text-[#c9d1d9]">Argentum Online</span>
+              </h1>
+            </div>
+
+            <div className="flex-1" />
+
+            {/* Search Overlay */}
+            <div className="flex flex-col items-end gap-2 group pointer-events-auto">
+              <div className={cn(
+                "flex items-center transition-all duration-300 rounded-xl border border-[#30363d] overflow-hidden",
+                isSearchOpen || searchQuery ? "w-72 bg-[#161b22] shadow-2xl" : "w-10 bg-[#161b22]/50 hover:bg-[#161b22] hover:w-72"
+              )}>
+                <div className="flex items-center justify-center w-10 h-10 shrink-0">
+                  <Search className="w-4 h-4 text-[#8b949e]" />
+                </div>
+                <input 
+                  type="text"
+                  placeholder="Search nodes (e.g. HandleLogin)..."
+                  className="bg-transparent border-none outline-none text-xs text-[#c9d1d9] w-full pr-4 py-2"
+                  value={searchQuery}
+                  onFocus={() => setIsSearchOpen(true)}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {searchQuery && (
+                  <button 
+                    onClick={() => {
+                      setSearchQuery('');
+                      setFocusedNodeId(null);
+                    }}
+                    className="p-2 hover:bg-[#30363d] transition-colors"
+                  >
+                    <X className="w-3 h-3 text-[#8b949e]" />
+                  </button>
+                )}
+              </div>
+
+              {/* Search Results Dropdown */}
+              {isSearchOpen && searchResults.length > 0 && (
+                <div className="w-72 max-h-80 overflow-y-auto bg-[#161b22] border border-[#30363d] rounded-xl shadow-2xl custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-200">
+                  {searchResults.map(result => (
+                    <button
+                      key={result.key}
+                      onClick={() => {
+                        setFocusedNodeId(result.key);
+                        fetchCode(result.key);
+                        setActiveTab('code');
+                      }}
+                      className={cn(
+                        "w-full px-4 py-3 flex flex-col items-start gap-1 hover:bg-[#30363d] transition-colors text-left border-b border-[#30363d]/50 last:border-none",
+                        focusedNodeId === result.key && "bg-[#58a6ff]/10 border-l-2 border-l-[#58a6ff]"
+                      )}
+                    >
+                      <span className="text-xs font-bold text-[#c9d1d9] truncate w-full">{result.attributes.label}</span>
+                      <span className="text-[10px] text-[#8b949e] font-medium uppercase tracking-wider">{result.attributes.type}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              {isSearchOpen && searchQuery && searchResults.length === 0 && (
+                <div className="w-72 bg-[#161b22] border border-[#30363d] rounded-xl p-4 text-center shadow-2xl">
+                  <p className="text-xs text-[#8b949e] italic">No nodes found matching your query</p>
+                </div>
+              )}
+            </div>
           </div>
           
           {graphData && (
@@ -164,6 +294,8 @@ const App: React.FC = () => {
                 data={graphData} 
                 hiddenTypes={hiddenTypes}
                 onNodeClick={handleNodeClick} 
+                focusedNodeId={focusedNodeId}
+                layout={selectedLayout}
               />
             </div>
           )}

@@ -68,8 +68,9 @@ def get_graph():
                 "attributes": {
                     "label": d.get("label", n),
                     "type": d.get("type", "Unknown"),
+                    "loc": d.get("loc", 1),
                     # Add visualization attributes (can be customized by frontend)
-                    "size": 5 if d.get("type") == "Method" else 10,
+                    "size": d.get("size", 5),
                     # We'll let the frontend decide colors, but we can hint
                     "x": 0, "y": 0 # Position will be calculated by layout
                 }

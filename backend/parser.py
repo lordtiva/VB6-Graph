@@ -117,11 +117,13 @@ class VB6Parser:
     def parse_file(self, file_path, project_name):
         file_name = os.path.basename(file_path)
         file_type = "File"
-        self.graph.add_node(file_name, type=file_type, label=file_name)
-        self.graph.add_edge(project_name, file_name, type="CONTAINS")
         
         with open(file_path, 'r', encoding='latin-1') as f:
             content = f.read()
+            
+        lines_count = len(content.splitlines())
+        self.graph.add_node(file_name, type=file_type, label=file_name, loc=lines_count)
+        self.graph.add_edge(project_name, file_name, type="CONTAINS")
         
         save_node(file_name, file_type, file_path, content)
         
@@ -149,7 +151,7 @@ class VB6Parser:
             if match:
                 var_name = match.group(1)
                 var_id = f"{file_name}:{var_name}"
-                self.graph.add_node(var_id, type="Variable", label=var_name)
+                self.graph.add_node(var_id, type="Variable", label=var_name, loc=1)
                 self.graph.add_edge(file_name, var_id, type="CONTAINS")
                 save_node(var_id, "Variable", file_path, line)
 
@@ -173,7 +175,8 @@ class VB6Parser:
                 method_body.append(line)
                 if re.search(r'End\s+(Sub|Function|Property)', line, re.IGNORECASE):
                     method_id = f"{file_name}:{current_method}"
-                    self.graph.add_node(method_id, type="Method", label=current_method)
+                    loc = len(method_body)
+                    self.graph.add_node(method_id, type="Method", label=current_method, loc=loc)
                     self.graph.add_edge(file_name, method_id, type="CONTAINS")
                     save_node(method_id, "Method", file_path, "\n".join(method_body))
                     current_method = None
