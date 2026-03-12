@@ -126,28 +126,6 @@ def get_impact(node_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/refactor")
-def refactor_code(data: Dict[str, str]):
-    """
-    Bridge for refactoring code. 
-    In a real scenario, this would call an LLM via MCP or directly.
-    """
-    node_id = data.get("node_id")
-    code = data.get("code")
-    if not node_id or not code:
-        raise HTTPException(status_code=400, detail="Missing node_id or code")
-    
-    # For now, we return a mock refactored version (or we could implement actual logic here)
-    # The instruction says: "send a piece of bad code to Claude/GPT-4 (via MCP)"
-    # Since I AM the agent, I can provide the refactoring directly or 
-    # simulated results for the UI to show.
-    
-    return {
-        "node_id": node_id,
-        "original": code,
-        "refactored": f"' Refactored Version of {node_id}\n" + code.replace("Sub ", "Public Sub ").replace("Function ", "Public Function ")
-    }
-
 @app.get("/")
 def read_root():
     return {"msg": "VB6-Graph API is running. Use /api/graph, /api/code/{id}, or /api/analysis"}
