@@ -10,7 +10,9 @@ from analyzer import CodeAnalyzer
 import db
 
 app = typer.Typer(help="VB6-Graph CLI: Herramienta de análisis de código heredado.")
-OUTPUT_DIR = "output"
+# Definir la ruta de salida relativa a la raíz del proyecto
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(os.path.dirname(BACKEND_DIR), "output")
 
 def ensure_output_dir():
     if not os.path.exists(OUTPUT_DIR):
@@ -112,7 +114,36 @@ def ui(port: int = typer.Option(8000, help="Puerto para el servidor FastAPI")):
 def mcp(project_path: str = typer.Argument("sample_project", help="Proyecto a cargar en MCP")):
     """Levanta el servidor MCP existente."""
     typer.echo(f"[*] Iniciando servidor MCP con proyecto: {project_path}")
-    os.system(f"python mcp_server.py {project_path}")
+    
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    mcp_script = os.path.join(backend_dir, "mcp_server.py")
+    
+    import sys
+    import subprocess
+    # Use normalized paths for Windows
+    subprocess.run([sys.executable, mcp_script, project_path])
+
+@app.command()
+def inspect(project_path: str = typer.Argument("sample_project", help="Proyecto a cargar en MCP Inspector")):
+    """Lanza el MCP Inspector para probar las herramientas manualmente."""
+    import os
+    import sys
+    import subprocess
+    
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(backend_dir)
+    normalized_project_path = os.path.abspath(os.path.join(project_root, project_path)).replace('\\', '/')
+    
+    # Normalize paths to forward slashes for npx/node compatibility on Windows
+    python_exe = sys.executable.replace('\\', '/')
+    mcp_script = os.path.join(backend_dir, "mcp_server.py").replace('\\', '/')
+    
+    typer.echo(f"[*] Lanzando MCP Inspector para: {normalized_project_path}")
+    typer.echo(f"[*] Si es la primera vez, se descargará el inspector. Revisa tu navegador.")
+    
+    # Run npx using shell=True for Windows command resolution
+    cmd = f'npx @modelcontextprotocol/inspector "{python_exe}" "{mcp_script}" "{normalized_project_path}"'
+    subprocess.run(cmd, shell=True)
 
 if __name__ == "__main__":
     app()

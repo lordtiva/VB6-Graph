@@ -27,16 +27,26 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_node(node_id, node_type, file_path, code_content):
-    """Saves or updates a code node in the database."""
-    conn = sqlite3.connect(get_db_name())
+def get_connection():
+    """Returns a new connection to the database."""
+    return sqlite3.connect(get_db_name())
+
+def save_node(node_id, node_type, file_path, code_content, conn=None):
+    """Saves or updates a code node in the database. Can reuse an existing connection."""
+    should_close = False
+    if conn is None:
+        conn = get_connection()
+        should_close = True
+        
     cursor = conn.cursor()
     cursor.execute("""
         INSERT OR REPLACE INTO code_nodes (node_id, node_type, file_path, code_content)
         VALUES (?, ?, ?, ?)
     """, (node_id, node_type, file_path, code_content))
-    conn.commit()
-    conn.close()
+    
+    if should_close:
+        conn.commit()
+        conn.close()
 
 def get_node_code(node_id):
     """Retrieves the code content for a given node_id."""

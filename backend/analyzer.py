@@ -7,21 +7,49 @@ class CodeAnalyzer:
 
     def detect_dead_code(self):
         """
-        Nodos tipo 'Method' con in-degree = 0 (que no sean llamados por nadie) 
-        y que no tengan aristas entrantes de tipo 'TRIGGERS' (UI).
-        En nuestro grafo, un método siempre tiene una arista 'CONTAINS' desde su archivo.
-        Por lo tanto, buscamos métodos que SOLO tengan la arista 'CONTAINS'.
+        Identifies dead code using reachability analysis.
+        Dead code consists of methods that are NOT reachable from "Entry Points".
+        Entry Points:
+        - Methods triggered by UI (TRIGGERS edges)
+        - Methods explicitly named "Main" or "Sub Main"
         """
-        dead_methods = []
-        methods = [n for n, d in self.graph.nodes(data=True) if d.get('type') == 'Method']
+        # 1. Identify Entry Points
+        entry_points = set()
         
-        for method in methods:
-            # Buscamos aristas entrantes que no sean 'CONTAINS'
-            incoming_calls = [u for u, v, d in self.graph.in_edges(method, data=True) 
-                             if d.get('type') in ('CALLS', 'TRIGGERS')]
-            
-            if not incoming_calls:
-                dead_methods.append(method)
+        # Nodes target of TRIGGERS (UI events)
+        for u, v, d in self.graph.edges(data=True):
+            if d.get('type') == 'TRIGGERS':
+                entry_points.add(v)
+        
+        # Common VB6/Argentum entry points
+        # We iterate through all nodes and add them if they match the criteria
+        for n, d in self.graph.nodes(data=True):
+            node_type = d.get('type')
+            node_name_lower = n.split(':')[-1].lower() if ':' in n else n.lower()
+
+            if node_type == 'UIControl':
+                entry_points.add(n)
+            elif node_type == 'Method':
+                # Methods named Main (case-insensitive)
+                if node_name_lower == "main":
+                    entry_points.add(n)
+                # Network/Protocol handlers, Events (Form_, Class_, Timer_), and Interface implementations
+                elif (node_name_lower.startswith('handle') or 
+                      node_name_lower.startswith('event') or 
+                      '_' in node_name_lower or 
+                      node_name_lower in ['onserverrecv', 'receive', 'eventosockread', 'senddata']):
+                    entry_points.add(n)
+
+        # 2. Perform reachability analysis (BFS/DFS)
+        reachable_nodes = set()
+        for ep in entry_points:
+            if ep in self.graph:
+                reachable_nodes.add(ep)
+                reachable_nodes.update(nx.descendants(self.graph, ep))
+
+        # 3. Dead methods are Methods NOT in reachable_nodes
+        all_methods = [n for n, d in self.graph.nodes(data=True) if d.get('type') == 'Method']
+        dead_methods = [m for m in all_methods if m not in reachable_nodes]
         
         return dead_methods
 
@@ -67,13 +95,16 @@ class CodeAnalyzer:
                 if file_u in files and file_v in files and file_u != file_v:
                     file_graph.add_edge(file_u, file_v)
 
-        from itertools import islice
         try:
-            # simple_cycles can be exponential, so we limit to the first 50 results
-            cycles = list(islice(nx.simple_cycles(file_graph), 50))
+            # Use Strongly Connected Components to find groups of files that are all reachable from each other
+            sccs = list(nx.strongly_connected_components(file_graph))
+            # Filter only components with more than 1 node (actual cycles)
+            cycles = [list(component) for component in sccs if len(component) > 1]
+            # Sort by size descending
+            cycles.sort(key=len, reverse=True)
             return cycles
         except Exception as e:
-            return [[f"Error detectando ciclos: {str(e)}"]]
+            return [[f"Error detectando componentes: {str(e)}"]]
 
     def get_analysis_summary(self):
         return {

@@ -60,19 +60,24 @@ def get_graph():
     try:
         graph = load_latest_graph()
         
+        # Calculate layout on the backend to avoid freezing the frontend
+        # For very large graphs, this might need optimization/caching
+        print(f"[*] Calculating layout for {len(graph.nodes)} nodes...")
+        pos = nx.spring_layout(graph, iterations=50, k=1/len(graph.nodes)**0.5)
+        
         # Format for Sigma.js/Graphology
         nodes = []
         for n, d in graph.nodes(data=True):
+            nx_pos = pos.get(n, [0, 0])
             nodes.append({
                 "key": n,
                 "attributes": {
                     "label": d.get("label", n),
                     "type": d.get("type", "Unknown"),
                     "loc": d.get("loc", 1),
-                    # Add visualization attributes (can be customized by frontend)
                     "size": d.get("size", 5),
-                    # We'll let the frontend decide colors, but we can hint
-                    "x": 0, "y": 0 # Position will be calculated by layout
+                    "x": nx_pos[0] * 1000, 
+                    "y": nx_pos[1] * 1000
                 }
             })
             

@@ -89,9 +89,47 @@ Inicia el ecosistema completo (API + UI).
 
 ### Fase 4: Servidor MCP (Para IAs)
 
-```bash
-python backend/main.py mcp <directorio_proyecto_vb6>
+Existen dos formas de interactuar con el servidor MCP:
+
+1. **Servidor Directo**: Para conectar con clientes MCP (como Claude Desktop o Antigravity).
+
+   ```bash
+   python backend/main.py mcp <directorio_proyecto_vb6>
+   ```
+
+2. **Inspector Manual (Web)**: Para probar las herramientas disponibles desde tu navegador.
+
+   ```bash
+   python backend/main.py inspect <directorio_proyecto_vb6>
+   ```
+
+   *Esto lanzará el **MCP Inspector** de Model Context Protocol. Sigue las instrucciones en la consola para abrir el navegador.*
+
+## 🤖 Configuración del Agente (MCP)
+
+Para que tu IA (Claude Desktop, Antigravity, etc.) pueda usar estas herramientas automáticamente, debes configurar el archivo de configuración de MCP (ej. `mcp_config.json`).
+
+### Ejemplo de Configuración
+
+Debes usar rutas absolutas para el ejecutable de Python y el script del servidor:
+
+```json
+{
+  "mcpServers": {
+    "vb6-graph": {
+      "command": "C:/Ruta/A/Tu/Proyecto/backend/.venv/Scripts/python.exe",
+      "args": [
+        "C:/Ruta/A/Tu/Proyecto/backend/mcp_server.py"
+      ],
+      "env": {
+        "PYTHONPATH": "C:/Ruta/A/Tu/Proyecto/backend"
+      }
+    }
+  }
+}
 ```
+
+*Nota: Asegúrate de usar barras normales `/` en las rutas, incluso en Windows, para evitar errores de escape de caracteres.*
 
 ## 📁 Estructura del Proyecto
 

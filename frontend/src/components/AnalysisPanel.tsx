@@ -139,11 +139,15 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ results }) => {
                   ))}
                 </div>
                 <div className="mt-3 flex items-center justify-between">
-                  <span className="text-[9px] text-[#8b949e] font-bold uppercase tracking-widest">
-                    Cycle {i + 1}
-                  </span>
-                  <div className="text-[9px] text-[#8b949e] italic">
-                    Points: {cycle.length}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-[#8b949e] font-bold uppercase tracking-widest">
+                      Cycle {i + 1}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black text-[#ffa657] bg-[#ffa657]/10 px-2 py-0.5 rounded-full border border-[#ffa657]/20">
+                      {cycle.length} POINTS
+                    </span>
                   </div>
                 </div>
               </div>

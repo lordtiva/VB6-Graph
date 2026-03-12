@@ -35,7 +35,7 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
 
     // Add nodes
     data.nodes.forEach((node) => {
-      const { type, loc, ...restAttributes } = node.attributes;
+      const { type, loc, x, y, ...restAttributes } = node.attributes;
       const color = TYPE_COLORS[type] || TYPE_COLORS.Unknown;
       
       // Calculate size based on LOC using a log scale to handle Argentum's massive files
@@ -46,8 +46,8 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
         nodeType: type,
         color,
         size: baseSize,
-        x: Math.random() * 100,
-        y: Math.random() * 100,
+        x: x || Math.random() * 100,
+        y: y || Math.random() * 100,
       });
     });
 
@@ -95,7 +95,8 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
     if (layout === 'circular') {
       circular.assign(graph);
     } else {
-      forceAtlas2.assign(graph, { iterations: 100, settings: { gravity: 1 } });
+      // Backend already calculated layout, we only run a few iterations to refine or animate
+      forceAtlas2.assign(graph, { iterations: 5, settings: { gravity: 1 } });
     }
     
     rendererRef.current.refresh();

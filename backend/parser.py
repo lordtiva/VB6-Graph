@@ -11,6 +11,11 @@ class VB6Parser:
         if project_name:
             set_db_name(project_name)
         init_db()
+        
+        # Persistent connection for batch parsing
+        from db import get_connection
+        self.conn = get_connection()
+        self.nodes_saved_count = 0
 
     def find_vbp(self, directory):
         """Finds the .vbp file in the given directory."""
@@ -32,7 +37,7 @@ class VB6Parser:
         
         print(f"[*] Analyzing Project: {project_name}")
         self.graph.add_node(project_name, type="Project", label=project_name)
-        save_node(project_name, "Project", vbp_file, "")
+        self._save_node_batched(project_name, "Project", vbp_file, "")
 
         # Phase 1: Identify all nodes
         files_to_parse = []
@@ -51,6 +56,10 @@ class VB6Parser:
         # Phase 2: Build Relationships (CALLS, USES, TRIGGERS)
         print("[*] Building relationships (this may take a while)...")
         self.build_relationships()
+        
+        # Final commit and close
+        self.conn.commit()
+        self.conn.close()
 
     def build_relationships(self):
         """Iterates over stored methods to find calls and uses."""
@@ -76,8 +85,18 @@ class VB6Parser:
             code = self.get_stored_code(method_id)
             if not code: continue
 
+            # Strip VB6 comments before analyzing relationships
+            # VB6 comments start with ' or REM
+            code_lines = []
+            for line in code.splitlines():
+                # Remove content after ' or REM (case-insensitive)
+                clean_line = re.split(r"\'|\b[rR][eE][mM]\b", line)[0]
+                code_lines.append(clean_line)
+            
+            clean_code = "\n".join(code_lines)
+
             # Tokenize code simply (alphanumeric + underscore)
-            tokens = set(re.findall(r'\b[a-zA-Z0-9_]+\b', code.lower()))
+            tokens = set(re.findall(r'\b[a-zA-Z0-9_]+\b', clean_code.lower()))
             
             # Skip the first token if it's the method name itself (definition)
             method_name_simple = method_id.split(':')[-1].lower()
@@ -98,14 +117,24 @@ class VB6Parser:
 
         # Detect TRIGGERS (UI Control -> Method)
         print(f"    - Linking {len(controls)} UI controls to event handlers...")
+        
+        # Optimization: group methods by file to avoid O(N*M) search
+        methods_by_file = {}
+        for m_id in methods:
+            f_name = m_id.split(':')[0]
+            if f_name not in methods_by_file:
+                methods_by_file[f_name] = []
+            methods_by_file[f_name].append(m_id)
+
         for control_id in controls:
             parts = control_id.split(':')
             file_name = parts[0]
             control_name = parts[-1]
             
             # Look for methods in the same file starting with control_name_
+            methods_in_file = methods_by_file.get(file_name, [])
             prefix = f"{file_name}:{control_name}_".lower()
-            for m_id in methods:
+            for m_id in methods_in_file:
                 if m_id.lower().startswith(prefix):
                     self.graph.add_edge(control_id, m_id, type="TRIGGERS")
 
@@ -113,6 +142,14 @@ class VB6Parser:
         # Helper to get code from SQLite via db.py
         from db import get_node_code
         return get_node_code(node_id)
+    
+    def _save_node_batched(self, node_id, node_type, file_path, code_content):
+        """Internal helper to save nodes with periodic commits."""
+        save_node(node_id, node_type, file_path, code_content, conn=self.conn)
+        self.nodes_saved_count += 1
+        if self.nodes_saved_count % 500 == 0:
+            self.conn.commit()
+            print(f"    - Batched commit: {self.nodes_saved_count} nodes saved.")
 
     def parse_file(self, file_path, project_name):
         file_name = os.path.basename(file_path)
@@ -125,7 +162,7 @@ class VB6Parser:
         self.graph.add_node(file_name, type=file_type, label=file_name, loc=lines_count)
         self.graph.add_edge(project_name, file_name, type="CONTAINS")
         
-        save_node(file_name, file_type, file_path, content)
+        self._save_node_batched(file_name, file_type, file_path, content)
         
         # Extract Globals/Public variables (Phase 2 Variable node)
         self.extract_variables(content, file_name, file_path)
@@ -139,46 +176,58 @@ class VB6Parser:
 
     def extract_variables(self, content, file_name, file_path):
         # Public | Global | Dim (at module level)
-        # Simplification: we only look at the header before first Sub/Function
-        header = content.splitlines()
-        var_pattern = re.compile(r'^(?:Public|Global|Dim)\s+([a-zA-Z0-9_]+)', re.IGNORECASE)
+        # Using \b and ^\s* for precission
+        var_pattern = re.compile(r'^\s*(?:Public|Global|Dim)\s+\b([a-zA-Z0-9_]+)\b', re.IGNORECASE)
+        reserved = {'to', 'for', 'if', 'then', 'else', 'while', 'step', 'each', 'in', 'next', 'select', 'case'}
         
-        for line in header:
+        for line in content.splitlines():
             # Stop if we find a method
-            if re.search(r'(?:Sub|Function|Property)', line, re.IGNORECASE):
+            if re.search(r'^\s*(?:Public|Private|Friend|Static)?\s*(?:Sub|Function|Property)', line, re.IGNORECASE):
                 break
+            # Skip comments
+            if line.strip().startswith("'") or line.strip().upper().startswith("REM "):
+                continue
+
             match = var_pattern.search(line)
             if match:
                 var_name = match.group(1)
+                if var_name.lower() in reserved: continue
                 var_id = f"{file_name}:{var_name}"
                 self.graph.add_node(var_id, type="Variable", label=var_name, loc=1)
                 self.graph.add_edge(file_name, var_id, type="CONTAINS")
-                save_node(var_id, "Variable", file_path, line)
+                self._save_node_batched(var_id, "Variable", file_path, line)
 
     def extract_methods(self, content, file_name, file_path):
-        # Regex for methods: Sub, Function, Property
+        # Regex for methods: Sub, Function, Property (Enforce start of line)
         method_pattern = re.compile(
-            r'(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([a-zA-Z0-9_]+)',
+            r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+\b([a-zA-Z0-9_]+)\b',
             re.IGNORECASE
         )
+        reserved = {'to', 'for', 'if', 'then', 'else', 'while', 'step', 'each', 'in', 'next', 'select', 'case'}
         
         lines = content.splitlines()
         current_method = None
         method_body = []
         
         for line in lines:
-            match = method_pattern.search(line)
-            if match and not current_method:
-                current_method = match.group(1)
-                method_body = [line]
-            elif current_method:
+            # Only match if we're not currently in a method or if the line is not a comment
+            if not current_method and not (line.strip().startswith("'") or line.strip().upper().startswith("REM ")):
+                match = method_pattern.search(line)
+                if match:
+                    method_name = match.group(1)
+                    if method_name.lower() not in reserved:
+                        current_method = method_name
+                        method_body = [line]
+                        continue
+
+            if current_method:
                 method_body.append(line)
-                if re.search(r'End\s+(Sub|Function|Property)', line, re.IGNORECASE):
+                if re.search(r'^\s*End\s+(Sub|Function|Property)', line, re.IGNORECASE):
                     method_id = f"{file_name}:{current_method}"
                     loc = len(method_body)
                     self.graph.add_node(method_id, type="Method", label=current_method, loc=loc)
                     self.graph.add_edge(file_name, method_id, type="CONTAINS")
-                    save_node(method_id, "Method", file_path, "\n".join(method_body))
+                    self._save_node_batched(method_id, "Method", file_path, "\n".join(method_body))
                     current_method = None
                     method_body = []
 
@@ -196,7 +245,7 @@ class VB6Parser:
                 
                 self.graph.add_node(control_id, type="UIControl", label=f"{control_name} ({control_type})")
                 self.graph.add_edge(file_name, control_id, type="CONTAINS")
-                save_node(control_id, "UIControl", file_path, line)
+                self._save_node_batched(control_id, "UIControl", file_path, line)
 
     def get_graph(self):
         return self.graph
