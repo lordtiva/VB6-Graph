@@ -162,6 +162,7 @@ class CodeAnalyzer:
         files = set()
         methods = set()
         ui_controls = set()
+        external = set()
         other = 0
         
         for node in impacted_nodes:
@@ -172,15 +173,18 @@ class CodeAnalyzer:
                 methods.add(node)
             elif t == 'UIControl':
                 ui_controls.add(node)
+            elif t == 'External':
+                external.add(node)
             elif t != 'Project':
                 other += 1
                 
         return {
             "node_id": node_id,
-            "impact_count": len(files) + len(methods) + len(ui_controls) + other,
+            "impact_count": len(files) + len(methods) + len(ui_controls) + len(external) + other,
             "files": list(files),
             "methods": list(methods),
-            "ui_controls": list(ui_controls)
+            "ui_controls": list(ui_controls),
+            "external": list(external)
         }
 
     def get_analysis_summary(self):

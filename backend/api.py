@@ -78,8 +78,8 @@ def get_graph():
         
         g_ig = ig.Graph(len(node_list), edges, directed=True)
         
-        # Use Fruchterman-Reingold layout (C-optimized)
-        layt = g_ig.layout_fruchterman_reingold(niter=1000)
+        # Use Distributed Recursive Layout (DrL) - much better for large software architectures
+        layt = g_ig.layout_drl()
         
         # Normalize coordinates to [-1, 1] for consistent frontend scaling
         coords = list(zip(*layt)) # [[x1, x2...], [y1, y2...]]

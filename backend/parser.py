@@ -3,6 +3,132 @@ import re
 import networkx as nx
 from db import init_db, save_node, set_db_name
 import sqlite3
+import concurrent.futures
+import multiprocessing
+
+try:
+    from antlr_parser_wrapper import AntlrParserWrapper
+except ImportError:
+    AntlrParserWrapper = None
+
+def _extract_variables_regex(content):
+    var_pattern = re.compile(r'^\s*(?:Public|Global|Dim)\s+\b([a-zA-Z0-9_]+)\b', re.IGNORECASE)
+    reserved = {'to', 'for', 'if', 'then', 'else', 'while', 'step', 'each', 'in', 'next', 'select', 'case'}
+    vars_found = []
+    for line in content.splitlines():
+        if re.search(r'^\s*(?:Public|Private|Friend|Static)?\s*(?:Sub|Function|Property)', line, re.IGNORECASE):
+            break
+        if line.strip().startswith("'") or line.strip().upper().startswith("REM "):
+            continue
+        match = var_pattern.search(line)
+        if match:
+            var_name = match.group(1)
+            if var_name.lower() not in reserved:
+                vars_found.append({"name": var_name, "content": line})
+    return vars_found
+
+def _extract_methods_regex(content):
+    method_pattern = re.compile(
+        r'^\s*(?:(?:Public|Private|Friend)\s+)?(?:Static\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+\b([a-zA-Z0-9_]+)\b',
+        re.IGNORECASE
+    )
+    lines = content.splitlines()
+    methods_found = []
+    current_method = None
+    method_body = []
+    start_line = 0
+    
+    for i, line in enumerate(lines, 1):
+        if not current_method and not (line.strip().startswith("'") or line.strip().upper().startswith("REM ")):
+            match = method_pattern.search(line)
+            if match:
+                current_method = match.group(1)
+                method_body = [line]
+                start_line = i
+                continue
+        
+        if current_method:
+            method_body.append(line)
+            if re.search(r'^\s*End\s+(?:Sub|Function|Property)', line, re.IGNORECASE):
+                methods_found.append({
+                    "name": current_method,
+                    "content": "\n".join(method_body),
+                    "start": start_line,
+                    "end": i
+                })
+                current_method = None
+                method_body = []
+    return methods_found
+
+def _extract_ui_controls_regex(content):
+    control_pattern = re.compile(r'^\s*Begin\s+\b[a-zA-Z0-9_.]+\b\s+\b([a-zA-Z0-9_]+)\b', re.IGNORECASE)
+    controls_found = []
+    for line in content.splitlines():
+        match = control_pattern.search(line)
+        if match:
+            controls_found.append(match.group(1))
+    return controls_found
+
+def _parse_file_worker(file_path):
+    file_name = os.path.basename(file_path)
+    try:
+        with open(file_path, 'r', encoding='latin-1') as f:
+            content = f.read()
+    except Exception as e:
+        return {"error": str(e), "file_path": file_path}
+
+    res = {
+        "file_path": file_path,
+        "file_name": file_name,
+        "content": content,
+        "lines_count": len(content.splitlines()),
+        "methods": [],
+        "variables": [],
+        "ui_controls": [],
+        "antlr_success": False
+    }
+
+    # Try ANTLR
+    if AntlrParserWrapper:
+        import threading
+        
+        result_container = {}
+        def _antlr_task():
+            try:
+                result_container["result"] = AntlrParserWrapper().parse_file(file_path)
+            except Exception as e:
+                result_container["error"] = e
+        
+        t = threading.Thread(target=_antlr_task, daemon=True)
+        t.start()
+        t.join(timeout=600)  # Standardized 10 min timeout
+        
+        if t.is_alive():
+            print(f"    [!] ANTLR timed out for {file_name}. Falling back to regex.")
+            res["antlr_success"] = False
+        else:
+            if "error" in result_container:
+                res["antlr_success"] = False
+            else:
+                antlr_res = result_container.get("result", {})
+                res["methods"] = antlr_res.get("methods", [])
+                res["variables"] = antlr_res.get("variables", [])
+                res["antlr_success"] = True
+                
+                # 'False Success' Detection
+                if len(res["methods"]) == 0 and len(res["variables"]) == 0 and res["lines_count"] > 10:
+                    res["antlr_success"] = False
+    
+    # Fallback to Regex if ANTLR failed or not available
+    if not res["antlr_success"]:
+        res["variables"] = _extract_variables_regex(content)
+        res["methods"] = _extract_methods_regex(content)
+    
+    # UI Controls
+    if file_path.lower().endswith('.frm'):
+        res["ui_controls"] = _extract_ui_controls_regex(content)
+        
+    return res
 
 class VB6Parser:
     def __init__(self, project_name=None):
@@ -12,6 +138,8 @@ class VB6Parser:
             set_db_name(project_name)
         init_db()
         
+        self.antlr_parser = AntlrParserWrapper() if AntlrParserWrapper else None
+
         # Persistent connection for batch parsing
         from db import get_connection
         self.conn = get_connection()
@@ -48,11 +176,56 @@ class VB6Parser:
         
         total_files = len(files_to_parse)
         print(f"[*] Found {total_files} files to parse.")
+        print(f"[*] Starting parallel parsing using {multiprocessing.cpu_count()} cores...")
         
-        for i, file_path in enumerate(files_to_parse, 1):
-            print(f"    [{i}/{total_files}] Parsing: {os.path.basename(file_path)}")
-            self.parse_file(file_path, project_name)
-        
+        with concurrent.futures.ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+            futures = {executor.submit(_parse_file_worker, fp): fp for fp in files_to_parse}
+            
+            for i, future in enumerate(concurrent.futures.as_completed(futures), 1):
+                res = future.result()
+                if "error" in res:
+                    print(f"    [{i}/{total_files}] Error parsing {os.path.basename(res['file_path'])}: {res['error']}")
+                    continue
+                
+                file_name = res["file_name"]
+                file_path = res["file_path"]
+                
+                print(f"    [{i}/{total_files}] Processing results: {file_name}")
+                
+                # Update Graph and DB (Sequential)
+                self.graph.add_node(file_name, type="File", label=file_name, loc=res["lines_count"])
+                self.graph.add_edge(project_name, file_name, type="CONTAINS")
+                self._save_node_batched(file_name, "File", file_path, res["content"])
+                
+                # Add Variables
+                for var in res["variables"]:
+                    var_name = var["name"]
+                    var_id = f"{file_name}:{var_name}"
+                    self.graph.add_node(var_id, type="Variable", label=var_name, loc=1)
+                    self.graph.add_edge(file_name, var_id, type="CONTAINS")
+                    content = var.get("content", f"Public/Private {var_name}")
+                    self._save_node_batched(var_id, "Variable", file_path, content)
+
+                # Add Methods
+                for method in res["methods"]:
+                    method_name = method["name"]
+                    method_id = f"{file_name}:{method_name}"
+                    loc = (method["end"] - method["start"] + 1) if "end" in method else 1
+                    self.graph.add_node(method_id, type="Method", label=method_name, loc=loc)
+                    self.graph.add_edge(file_name, method_id, type="CONTAINS")
+                    self._save_node_batched(method_id, "Method", file_path, method["content"])
+                    
+                    if "calls" in method:
+                        for target in method["calls"]:
+                            self.graph.add_edge(method_id, target, type="CALL_PENDING")
+
+                # Add UI Controls
+                for control_name in res["ui_controls"]:
+                    control_id = f"{file_name}:{control_name}"
+                    self.graph.add_node(control_id, type="UIControl", label=control_name, loc=1)
+                    self.graph.add_edge(file_name, control_id, type="CONTAINS")
+                    self._save_node_batched(control_id, "UIControl", file_path, f"Begin {control_name}")
+
         # Phase 2: Build Relationships (CALLS, USES, TRIGGERS)
         print("[*] Building relationships (this may take a while)...")
         self.build_relationships()
@@ -77,42 +250,50 @@ class VB6Parser:
         method_keywords = set(method_map.keys())
         variable_keywords = set(variable_map.keys())
 
-        print(f"    - Analyzing {len(methods)} methods bodies...")
+        print(f"    - Processing ANTLR findings and fallback regex analysis...")
         for i, method_id in enumerate(methods, 1):
             if i % 500 == 0:
                 print(f"    - Progress: {i}/{len(methods)} methods analyzed.")
+            
+            # Resolve CALL_PENDING edges from ANTLR
+            pending_edges = [(u, v) for u, v, d in self.graph.out_edges(method_id, data=True) if d.get('type') == 'CALL_PENDING']
+            if pending_edges:
+                for u, target_name in pending_edges:
+                    target_key = target_name.lower()
+                    if target_key in method_map:
+                        self.graph.add_edge(method_id, method_map[target_key], type="CALLS")
+                    elif target_key in variable_map:
+                        self.graph.add_edge(method_id, variable_map[target_key], type="USES")
                 
+                # Remove pending edges
+                for u, v in pending_edges:
+                    self.graph.remove_edge(u, v)
+                
+                # We can skip regex scan for this method if we have ANTLR results
+                continue
+
+            # Fallback to Regex for methods not handled by ANTLR
             code = self.get_stored_code(method_id)
             if not code: continue
 
-            # Strip VB6 comments before analyzing relationships
-            # VB6 comments start with ' or REM
+            # Strip VB6 comments
             code_lines = []
             for line in code.splitlines():
-                # Remove content after ' or REM (case-insensitive)
                 clean_line = re.split(r"\'|\b[rR][eE][mM]\b", line)[0]
                 code_lines.append(clean_line)
             
             clean_code = "\n".join(code_lines)
-
-            # Tokenize code simply (alphanumeric + underscore)
             tokens = set(re.findall(r'\b[a-zA-Z0-9_]+\b', clean_code.lower()))
-            
-            # Skip the first token if it's the method name itself (definition)
             method_name_simple = method_id.split(':')[-1].lower()
             if method_name_simple in tokens:
                 tokens.remove(method_name_simple)
 
-            # Find intersection with known methods
             found_methods = tokens.intersection(method_keywords)
             for m_key in found_methods:
                 self.graph.add_edge(method_id, method_map[m_key], type="CALLS")
 
-            # Find intersection with known variables
             found_vars = tokens.intersection(variable_keywords)
             for v_key in found_vars:
-                # To be safe, verify it's not a local variable or param? 
-                # (Standard VB6 regex approach is simplified as requested)
                 self.graph.add_edge(method_id, variable_map[v_key], type="USES")
 
         # Detect TRIGGERS (UI Control -> Method)
@@ -138,6 +319,16 @@ class VB6Parser:
                 if m_id.lower().startswith(prefix):
                     self.graph.add_edge(control_id, m_id, type="TRIGGERS")
 
+        # Phase 3: Tag External Nodes
+        # Any node that was created as a target of a call but was never defined in a file
+        print(f"    - Tagging external dependencies...")
+        for n, d in self.graph.nodes(data=True):
+            if 'type' not in d:
+                self.graph.nodes[n]['type'] = 'External'
+                if 'label' not in d:
+                    self.graph.nodes[n]['label'] = n.split(':')[-1] # Simple name
+                    self.graph.nodes[n]['loc'] = 0
+
     def get_stored_code(self, node_id):
         # Helper to get code from SQLite via db.py
         from db import get_node_code
@@ -147,9 +338,9 @@ class VB6Parser:
         """Internal helper to save nodes with periodic commits."""
         save_node(node_id, node_type, file_path, code_content, conn=self.conn)
         self.nodes_saved_count += 1
-        if self.nodes_saved_count % 500 == 0:
+        if self.nodes_saved_count % 100 == 0:
             self.conn.commit()
-            print(f"    - Batched commit: {self.nodes_saved_count} nodes saved.")
+            # print(f"    - Batched commit: {self.nodes_saved_count} nodes saved.") # Removed for less verbose output
 
     def parse_file(self, file_path, project_name):
         file_name = os.path.basename(file_path)
@@ -164,13 +355,45 @@ class VB6Parser:
         
         self._save_node_batched(file_name, file_type, file_path, content)
         
-        # Extract Globals/Public variables (Phase 2 Variable node)
-        self.extract_variables(content, file_name, file_path)
+        antlr_success = False
+        if self.antlr_parser:
+            try:
+                # Use robust ANTLR parser
+                result = self.antlr_parser.parse_file(file_path)
+                
+                # Add Variables
+                for var in result["variables"]:
+                    var_name = var["name"]
+                    var_id = f"{file_name}:{var_name}"
+                    self.graph.add_node(var_id, type="Variable", label=var_name, loc=1)
+                    self.graph.add_edge(file_name, var_id, type="CONTAINS")
+                    # We don't have the original line but we saved the file content
+                    self._save_node_batched(var_id, "Variable", file_path, f"Public/Private {var_name}")
+
+                # Add Methods
+                for method in result["methods"]:
+                    method_name = method["name"]
+                    method_id = f"{file_name}:{method_name}"
+                    loc = method["end"] - method["start"] + 1
+                    self.graph.add_node(method_id, type="Method", label=method_name, loc=loc)
+                    self.graph.add_edge(file_name, method_id, type="CONTAINS")
+                    self._save_node_batched(method_id, "Method", file_path, method["content"])
+                    
+                    # Store direct calls found by ANTLR (already qualified by context)
+                    for target in method["calls"]:
+                        # We will link these in build_relationships to ensure nodes exist
+                        self.graph.add_edge(method_id, target, type="CALL_PENDING")
+
+                antlr_success = True
+            except Exception as e:
+                print(f"    [!] ANTLR failed for {file_name}: {e}. Falling back to regex.")
+
+        if not antlr_success:
+            # Fallback to legacy regex extraction
+            self.extract_variables(content, file_name, file_path)
+            self.extract_methods(content, file_name, file_path)
         
-        # Extract Methods
-        self.extract_methods(content, file_name, file_path)
-        
-        # Extract UI Controls (only for .frm)
+        # UI controls are still handled via regex for now as they are simple and reliable in frm headers
         if file_path.lower().endswith('.frm'):
             self.extract_ui_controls(content, file_name, file_path)
 

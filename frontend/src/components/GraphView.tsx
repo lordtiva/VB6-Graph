@@ -22,12 +22,13 @@ export const TYPE_COLORS: Record<string, string> = {
   Method: '#7ee787',
   Variable: '#ffa657',
   UIControl: '#d2a8ff',
+  External: '#6e7681',
   Unknown: '#8b949e',
 };
 
 // Vibrant color palette for communities
 const COMMUNITY_COLORS = [
-  '#ff7b72', '#79c0ff', '#7ee787', '#ffa657', '#d2a8ff', '#a5d6ff', '#ffa198', '#ffab70', 
+  '#ff7b72', '#79c0ff', '#7ee787', '#ffa657', '#d2a8ff', '#a5d6ff', '#ffa198', '#ffab70',
   '#f2cc60', '#58a6ff', '#3fb950', '#d29922', '#bc8cff', '#1f6feb', '#238636', '#9e6a03',
   '#8e1519', '#216e39', '#055d9c', '#76448a', '#117864', '#943126', '#1a5276', '#1d8348'
 ];
@@ -49,7 +50,7 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
     data.nodes.forEach((node) => {
       const { type, loc, x, y, community, ...restAttributes } = node.attributes;
       const color = TYPE_COLORS[type] || TYPE_COLORS.Unknown;
-      
+
       // Calculate size based on LOC using a log scale to handle Argentum's massive files
       const baseSize = loc ? Math.max(4, 3 + Math.log2(loc) * 1.5) : 5;
 
@@ -107,12 +108,24 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
 
     if (layout === 'circular') {
       circular.assign(graph);
+      rendererRef.current.refresh();
     } else {
-      // Backend already calculated layout, we only run a few iterations to refine or animate
-      forceAtlas2.assign(graph, { iterations: 5, settings: { gravity: 1 } });
+      // Small timeout to allow the browser to paint the initial graph before the heavy math
+      setTimeout(() => {
+        if (!rendererRef.current) return;
+        const g = rendererRef.current.getGraph();
+
+        forceAtlas2.assign(g, {
+          iterations: 20, // Reduced for performance
+          settings: {
+            scalingRatio: 12, // Slightly more separation 
+            gravity: 1,
+            strongGravityMode: true
+          }
+        });
+        rendererRef.current.refresh();
+      }, 100);
     }
-    
-    rendererRef.current.refresh();
   }, [layout, data]); // Also run on data change to ensure layout is applied to new nodes
 
   // Handle camera focus on search
@@ -151,7 +164,7 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
       } else {
         res.color = TYPE_COLORS[res.nodeType] || TYPE_COLORS.Unknown;
       }
-      
+
       // 2. Focused Node Logic
       if (focusedNodeId && graph.hasNode(focusedNodeId)) {
         const isNeighbor = graph.areNeighbors(node, focusedNodeId);
@@ -159,7 +172,7 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
 
         if (isFocus) {
           res.highlighted = true;
-          res.size = (res.size || 5) * 2.5; 
+          res.size = (res.size || 5) * 2.5;
           res.zIndex = 1000;
         } else if (isNeighbor) {
           res.label = res.label || node;
