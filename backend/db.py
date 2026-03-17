@@ -1,7 +1,8 @@
 import sqlite3
 import os
 
-_DB_NAME = "vb6_code.db"
+# Default database name in the output directory
+_DB_NAME = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output", "vb6_code.db")
 
 def set_db_name(name):
     global _DB_NAME

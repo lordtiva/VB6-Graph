@@ -7,12 +7,12 @@ import os
 # Initialize MCP Server
 mcp = FastMCP("VB6-Graph-Server")
 
-# Global parser instance
-parser = VB6Parser()
+# Global instances
+parser = None
 graph = None
 
 def load_project(path):
-    global graph
+    global graph, parser
     project_name = os.path.basename(path.rstrip(os.sep))
     
     # Ensure output directory is always in the project root
@@ -23,6 +23,7 @@ def load_project(path):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
+    # Use descriptive name in output directory
     db_path = os.path.join(output_dir, f"{project_name}.db")
     graph_path = os.path.join(output_dir, f"{project_name}.graphml")
 
@@ -32,16 +33,15 @@ def load_project(path):
     if os.path.exists(graph_path) and os.path.exists(db_path):
         print(f"[*] Loading existing graph and DB for: {project_name}")
         graph = nx.read_graphml(graph_path)
-        # We still need to initialize the parser's state if needed, 
-        # but the tools mainly use the global 'graph' and db.get_node_code
+        # Initialize parser to handle the DB correctly but don't re-parse
+        parser = VB6Parser(project_name=db_path)
     else:
         print(f"[*] Parsing project: {project_name}")
-        parser.__init__(project_name=db_path)
+        parser = VB6Parser(project_name=db_path)
         parser.parse_project(path)
         graph = parser.get_graph()
-        # Save graph for next time if output_dir exists
-        if os.path.exists(output_dir):
-            nx.write_graphml(graph, graph_path)
+        # Save graph for next time
+        nx.write_graphml(graph, graph_path)
 
 @mcp.tool()
 def get_project_structure():
@@ -143,4 +143,8 @@ if __name__ == "__main__":
         load_project(path)
     else:
         print("[!] Started without initial project. Use switch_project to load one.")
-    mcp.run()
+    try:
+        mcp.run()
+    except (KeyboardInterrupt, SystemExit):
+        # Graceful exit without traceback
+        pass

@@ -121,7 +121,10 @@ def mcp(project_path: str = typer.Argument("sample_project", help="Proyecto a ca
     import sys
     import subprocess
     # Use normalized paths for Windows
-    subprocess.run([sys.executable, mcp_script, project_path])
+    try:
+        subprocess.run([sys.executable, mcp_script, project_path])
+    except KeyboardInterrupt:
+        typer.echo("\n[*] Servidor MCP detenido.")
 
 @app.command()
 def inspect(project_path: str = typer.Argument("sample_project", help="Proyecto a cargar en MCP Inspector")):
