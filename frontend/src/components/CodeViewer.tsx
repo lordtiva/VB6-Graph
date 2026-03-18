@@ -71,11 +71,20 @@ const CodeViewer: React.FC<CodeViewerProps> = ({ code, nodeId }) => {
             <AlertTriangle className="w-4 h-4 text-[#ffa657]" />
             <span className="text-xs font-bold text-[#ffa657]">Blast Radius Analysis</span>
           </div>
-          <p className="text-[11px] text-[#c9d1d9]">
-            Modifying this will affect <span className="font-bold">{impact.impact_count}</span> entities:
-            <br />
-            {impact.files.length} files, {impact.methods.length} methods, {impact.ui_controls.length} UI controls.
-          </p>
+          <div className="text-[11px] text-[#c9d1d9] leading-relaxed">
+            <p>
+              <span className="text-[#ffa657]">Direct Impact:</span> <span className="font-bold">{impact.direct_impact_count ?? impact.impact_count}</span> entities.
+            </p>
+            {impact.indirect_impact_count > 0 && (
+              <p>
+                <span className="text-[#8b949e]">Indirect Impact:</span> <span className="font-bold">{impact.indirect_impact_count}</span> recursive dependencies.
+              </p>
+            )}
+            <div className="mt-1 flex gap-2 opacity-70 italic text-[10px]">
+              <span>Files: {(impact.direct?.files?.length || 0) + (impact.indirect?.files?.length || 0) || impact.files?.length || 0}</span>
+              <span>Methods: {(impact.direct?.methods?.length || 0) + (impact.indirect?.methods?.length || 0) || impact.methods?.length || 0}</span>
+            </div>
+          </div>
         </div>
       )}
 

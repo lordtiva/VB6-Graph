@@ -12,6 +12,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from db import set_db_name, get_db_name, get_node_code
 from antlr_parser_wrapper import AntlrParserWrapper
+from layout_utils import calculate_3d_layout
+from graph_utils import sanitize_graph_for_graphml
 
 # Reuse regex logic from parser.py
 def _extract_variables_regex(content):
@@ -84,7 +86,7 @@ def _reparse_worker(file_name, content):
     
     t = threading.Thread(target=_antlr_task, daemon=True)
     t.start()
-    t.join(timeout=30) # Faster timeout for reconstruction
+    t.join(timeout=120) # Faster timeout for reconstruction
     
     if not t.is_alive() and "error" not in result_container and "result" in result_container:
         antlr_res = result_container["result"]
@@ -256,9 +258,14 @@ def reconstruct_graph(db_path):
             if m_id.lower().startswith(prefix):
                 graph.add_edge(control_id, m_id, type="TRIGGERS")
 
-    # SAVE GRAPHML
+    # Layout optimization for frontend performance
+    print("[*] Pre-calculating 3D layout (1000 iterations)...")
+    graph = calculate_3d_layout(graph)
+
+    # SAVE GRAPHML (Sanitized for compatibility)
     output_path = db_path.replace('.db', '.graphml')
     print(f"[*] Saving graph to: {output_path}")
+    graph = sanitize_graph_for_graphml(graph)
     nx.write_graphml(graph, output_path)
     print("[*] DONE!")
     conn.close()

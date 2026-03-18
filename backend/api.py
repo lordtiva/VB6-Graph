@@ -90,50 +90,17 @@ def get_graph():
             print("[cache] Serving graph from cache")
             return {"nodes": _cache["nodes"], "edges": _cache["edges"]}
 
-        print("[cache] Cache miss for graph, calculating layout...")
+        print("[cache] Cache miss for graph, serving pre-calculated layout...")
         analyzer = CodeAnalyzer(graph)
-        communities = analyzer.detect_communities()
-        _cache["communities"] = communities
-        
-        # Calculate layout
-        print(f"[*] Calculating high-performance layout for {len(graph.nodes)} nodes...")
-        node_list = list(graph.nodes())
-        node_index = {node: i for i, node in enumerate(node_list)}
-        
-        edges = []
-        for u, v in graph.edges():
-            if u in node_index and v in node_index:
-                edges.append((node_index[u], node_index[v]))
-        
-        g_ig = ig.Graph(len(node_list), edges, directed=True)
-        print(f"[*] Computing 3D cloud (1000 iterations)...")
-        layt = g_ig.layout_fruchterman_reingold(dim=3, niter=1000)
-        
-        coords = list(zip(*layt))
-        if coords:
-            min_x, max_x = min(coords[0]), max(coords[0])
-            min_y, max_y = min(coords[1]), max(coords[1])
-            min_z, max_z = min(coords[2]), max(coords[2])
-            range_x = (max_x - min_x) or 1
-            range_y = (max_y - min_y) or 1
-            range_z = (max_z - min_z) or 1
-
-            z_scale_fix = 2.0 if range_z < 0.1 * range_x else 1.0
-
-            pos = {node_list[i]: (
-                (layt[i][0] - min_x) / range_x * 2 - 1,
-                (layt[i][1] - min_y) / range_y * 2 - 1,
-                ((layt[i][2] - min_z) / range_z * 2 - 1) * z_scale_fix
-            ) for i in range(len(node_list))}
-        else:
-            pos = {node: [0, 0, 0] for node in node_list}
-
-        print(f"[*] 3D Layout calculated for {len(pos)} nodes.")
-        
-        # Format nodes and edges
+        communities = _cache.get("communities")
+        if communities is None:
+            communities = analyzer.detect_communities()
+            _cache["communities"] = communities
+            
+        # Format nodes and edges using coordinates stored in GraphML
         nodes = []
         for n, d in graph.nodes(data=True):
-            nx_pos = pos.get(n, [0, 0, 0])
+            # Coordinates are stored as x,y,z in normalized form * 1000 in parser/reconstructor
             nodes.append({
                 "key": n,
                 "attributes": {
@@ -142,16 +109,16 @@ def get_graph():
                     "loc": d.get("loc", 1),
                     "size": d.get("size", 5),
                     "community": communities.get(n, -1),
-                    "x": nx_pos[0] * 1000, 
-                    "y": nx_pos[1] * 1000,
-                    "z": nx_pos[2] * 1000
+                    "x": float(d.get("x", 0)), 
+                    "y": float(d.get("y", 0)),
+                    "z": float(d.get("z", 0))
                 }
             })
             
         edges_out = [{"source": u, "target": v, "attributes": {"type": d.get("type", "Unknown")}} 
                    for u, v, d in graph.edges(data=True)]
             
-        print(f"[*] 3D Layout and formatting complete.")
+        print(f"[*] Serving {len(nodes)} nodes with pre-calculated layout.")
         _cache["nodes"] = nodes
         _cache["edges"] = edges_out
         return {"nodes": nodes, "edges": edges_out}

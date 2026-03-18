@@ -133,64 +133,63 @@ class CodeAnalyzer:
         except Exception as e:
             print(f"Error detectando comunidades: {str(e)}")
             return {}
-
     def get_impact_analysis(self, node_id):
         """
-        Calcula el "Blast Radius" de modificar un nodo.
-        Retorna quiénes dependen de este nodo directa e indirectamente.
+        Calculates the "Blast Radius" of modifying a node.
+        Categorizes impact into Direct (immediate users) and Indirect (recursive users).
         """
         if node_id not in self.graph:
             return {"error": f"Node {node_id} not found."}
             
         ntype = self.graph.nodes[node_id].get('type', 'Unknown')
         
-        # Start set for ancestors search
+        # Start set of nodes to analyze
         targets = {node_id}
         
         # If it's a File, anyone depending on its members is also impacted
         if ntype == 'File':
-            # Add all members (successors in containment edges usually)
             members = [v for u, v, d in self.graph.out_edges(node_id, data=True) 
-                       if d.get('type') in ('CONTAINS', 'Unknown', 'Method')]
-            # In our current parser, it seems File -> Method is the structure
+                       if d.get('type') in ('CONTAINS', 'Method', 'Variable', 'UIControl')]
             targets.update(members)
 
-        impacted_nodes = set()
+        direct_impacted = set()
         for t in targets:
             if t in self.graph:
-                impacted_nodes.update(nx.ancestors(self.graph, t))
+                # Predecessors are immediate callers/users
+                direct_impacted.update(self.graph.predecessors(t))
         
-        # Remove the targets themselves and the project node from the list of 'affected' entities
-        # usually people want to see external impact
-        impacted_nodes -= targets
+        # Indirect impact: ancestors that are NOT direct predecessors
+        all_impacted = set()
+        for t in targets:
+            if t in self.graph:
+                all_impacted.update(nx.ancestors(self.graph, t))
         
-        # Categorize impacts
-        files = set()
-        methods = set()
-        ui_controls = set()
-        external = set()
-        other = 0
+        # Clean up: remove self and project node
+        all_impacted -= targets
+        all_impacted.discard(os.path.basename(node_id.split(':')[0])) # Approximate Project name
         
-        for node in impacted_nodes:
-            t = self.graph.nodes[node].get('type', 'Unknown')
-            if t == 'File':
-                files.add(node)
-            elif t == 'Method':
-                methods.add(node)
-            elif t == 'UIControl':
-                ui_controls.add(node)
-            elif t == 'External':
-                external.add(node)
-            elif t != 'Project':
-                other += 1
+        indirect_impacted = all_impacted - direct_impacted
+
+        def categorize(node_set):
+            res = {"files": [], "methods": [], "ui_controls": [], "external": [], "other": 0}
+            for node in node_set:
+                t = self.graph.nodes[node].get('type', 'Unknown')
+                if t == 'File': res["files"].append(node)
+                elif t == 'Method': res["methods"].append(node)
+                elif t == 'UIControl': res["ui_controls"].append(node)
+                elif t == 'External': res["external"].append(node)
+                elif t != 'Project': res["other"] += 1
+            return res
+
+        direct_categorized = categorize(direct_impacted)
+        indirect_categorized = categorize(indirect_impacted)
                 
         return {
             "node_id": node_id,
-            "impact_count": len(files) + len(methods) + len(ui_controls) + len(external) + other,
-            "files": list(files),
-            "methods": list(methods),
-            "ui_controls": list(ui_controls),
-            "external": list(external)
+            "direct_impact_count": len(direct_impacted),
+            "indirect_impact_count": len(indirect_impacted),
+            "direct": direct_categorized,
+            "indirect": indirect_categorized
         }
 
     def calculate_architectural_metrics(self):

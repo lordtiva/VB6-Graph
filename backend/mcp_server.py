@@ -3,6 +3,7 @@ import networkx as nx
 from parser import VB6Parser
 from db import get_node_code
 import os
+from graph_utils import sanitize_graph_for_graphml
 
 # Initialize MCP Server
 mcp = FastMCP("VB6-Graph-Server")
@@ -40,7 +41,8 @@ def load_project(path):
         parser = VB6Parser(project_name=db_path)
         parser.parse_project(path)
         graph = parser.get_graph()
-        # Save graph for next time
+        # Save graph for next time (Sanitized for compatibility)
+        graph = sanitize_graph_for_graphml(graph)
         nx.write_graphml(graph, graph_path)
 
 @mcp.tool()

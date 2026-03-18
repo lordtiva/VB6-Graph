@@ -1,7 +1,7 @@
 import os
 import re
 import networkx as nx
-from db import init_db, save_node, set_db_name
+from db import init_db, save_node, set_db_name, get_db_name
 import sqlite3
 import concurrent.futures
 import multiprocessing
@@ -10,6 +10,9 @@ try:
     from antlr_parser_wrapper import AntlrParserWrapper
 except ImportError:
     AntlrParserWrapper = None
+
+from layout_utils import calculate_3d_layout
+from graph_utils import sanitize_graph_for_graphml
 
 def _extract_variables_regex(content):
     var_pattern = re.compile(r'^\s*(?:Public|Global|Dim)\s+\b([a-zA-Z0-9_]+)\b', re.IGNORECASE)
@@ -223,17 +226,18 @@ class VB6Parser:
                     method_id = f"{file_name}:{method_name}"
                     loc = (method["end"] - method["start"] + 1) if "end" in method else 1
                     
-                    # Store scope information for ASG resolution
-                    locals_list = [l.lower() for l in method.get("locals", [])]
+                    # Store scope information for ASG resolution - Join to strings for GraphML compatibility
+                    locals_str = ",".join([l.lower() for l in method.get("locals", [])])
                     params_list = [p.lower() for p in method.get("parameters", [])]
+                    params_str = ",".join(params_list)
                     
                     self.graph.add_node(
                         method_id, 
                         type="Method", 
                         label=method_name, 
                         loc=loc,
-                        locals=locals_list,
-                        parameters=params_list
+                        locals=locals_str,
+                        parameters=params_str
                     )
                     self.graph.add_edge(file_name, method_id, type="CONTAINS")
                     self._save_node_batched(method_id, "Method", file_path, method["content"])
@@ -253,9 +257,14 @@ class VB6Parser:
         print("[*] Building relationships (this may take a while)...")
         self.build_relationships()
         
-        # Save GraphML
+        # Phase 3: Calculate Layout before saving
+        print("[*] Calculating 3D layout... (optimized for 1000 iterations)")
+        self.graph = calculate_3d_layout(self.graph)
+
+        # Save GraphML (Sanitized for compatibility)
         graph_output = os.path.join(os.path.dirname(get_db_name()), f"{project_name}.graphml")
         print(f"[*] Saving graph to {graph_output}")
+        self.graph = sanitize_graph_for_graphml(self.graph)
         nx.write_graphml(self.graph, graph_output)
 
         # Final commit and close
@@ -286,10 +295,13 @@ class VB6Parser:
             # Resolve CALL_PENDING edges from ANTLR
             pending_edges = [(u, v) for u, v, d in self.graph.out_edges(method_id, data=True) if d.get('type') == 'CALL_PENDING']
             if pending_edges:
-                # Get local scope for this method
+                # Get local scope for this method - Handle comma-separated strings
                 method_data = self.graph.nodes[method_id]
-                local_names = set(method_data.get('locals', []))
-                param_names = set(method_data.get('parameters', []))
+                locals_val = method_data.get('locals', "")
+                params_val = method_data.get('parameters', "")
+                
+                local_names = set(locals_val.split(",")) if locals_val else set()
+                param_names = set(params_val.split(",")) if params_val else set()
                 
                 for u, target_name in pending_edges:
                     target_key = target_name.lower()
@@ -452,17 +464,18 @@ class VB6Parser:
                     method_id = f"{file_name}:{method_name}"
                     loc = method["end"] - method["start"] + 1
                     
-                    # Store scope information for ASG resolution
-                    locals_list = [l.lower() for l in method.get("locals", [])]
+                    # Store scope information for ASG resolution - Join to strings for GraphML compatibility
+                    locals_str = ",".join([l.lower() for l in method.get("locals", [])])
                     params_list = [p.lower() for p in method.get("parameters", [])]
+                    params_str = ",".join(params_list)
                     
                     self.graph.add_node(
                         method_id, 
                         type="Method", 
                         label=method_name, 
                         loc=loc,
-                        locals=locals_list,
-                        parameters=params_list
+                        locals=locals_str,
+                        parameters=params_str
                     )
                     self.graph.add_edge(file_name, method_id, type="CONTAINS")
                     self._save_node_batched(method_id, "Method", file_path, method["content"])

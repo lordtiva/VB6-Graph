@@ -5,4 +5,10 @@ output/
 *$py.class
 *.db
 *.graphml
-argentum-online-server/
+
+# --- IGNORE ALL PROJECT FOLDERS BY DEFAULT (WHITELIST CORE) ---
+# Ignorar todas las carpetas en la raiz excepto las de la aplicacion
+/*/
+!/backend/
+!/frontend/
+!/output/

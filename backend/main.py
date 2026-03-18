@@ -8,6 +8,7 @@ import uvicorn
 from parser import VB6Parser
 from analyzer import CodeAnalyzer
 import db
+from graph_utils import sanitize_graph_for_graphml
 
 app = typer.Typer(help="VB6-Graph CLI: Herramienta de análisis de código heredado.")
 # Definir la ruta de salida relativa a la raíz del proyecto
@@ -38,6 +39,7 @@ def parse(directory: str = typer.Argument(..., help="Directorio del proyecto VB6
     
     graph = parser.get_graph()
     graph_path = os.path.join(OUTPUT_DIR, f"{project_name}.graphml")
+    graph = sanitize_graph_for_graphml(graph)
     nx.write_graphml(graph, graph_path)
     
     typer.echo(f"[+] Parseo completado.")

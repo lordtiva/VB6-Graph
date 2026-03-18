@@ -194,10 +194,33 @@ const GraphView3D: React.FC<GraphView3DProps> = ({
     const edgesGroup = edgesGroupRef.current;
     const labelsGroup = labelsGroupRef.current;
 
-    // 1. CLEAR PREVIOUS MESHES
-    while(nodesGroup.children.length > 0) nodesGroup.remove(nodesGroup.children[0]);
-    while(edgesGroup.children.length > 0) edgesGroup.remove(edgesGroup.children[0]);
-    while(labelsGroup.children.length > 0) labelsGroup.remove(labelsGroup.children[0]);
+    // 1. CLEAR PREVIOUS MESHES (With proper disposal to avoid memory leaks)
+    const disposeObject = (obj: any) => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach((m: any) => {
+            if (m.map) m.map.dispose();
+            m.dispose();
+          });
+        } else {
+          if (obj.material.map) obj.material.map.dispose();
+          obj.material.dispose();
+        }
+      }
+    };
+
+    const clearGroup = (group: THREE.Group) => {
+      while(group.children.length > 0) {
+        const child = group.children[0];
+        disposeObject(child);
+        group.remove(child);
+      }
+    };
+
+    clearGroup(nodesGroup);
+    clearGroup(edgesGroup);
+    clearGroup(labelsGroup);
 
     console.log("[Graph3D] Updating meshes (Optimized), focused:", focusedNodeId);
 
