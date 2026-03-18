@@ -6,6 +6,7 @@ export interface NodeAttributes {
   size: number;
   x: number;
   y: number;
+  z: number;
   color?: string;
   loc?: number;
   community?: number;

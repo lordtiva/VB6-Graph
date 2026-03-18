@@ -1,18 +1,20 @@
 # VB6-Graph: Enterprise Code Analysis for Legacy Visual Basic 6
 
-VB6-Graph es una plataforma profesional para el análisis de arquitectura y deuda técnica en proyectos masivos de Visual Basic 6. Utiliza un motor de **Code Property Graph (CPG)** para visualizar dependencias y detectar "Code Smells" mediante algoritmos de grafos.
+VB6-Graph es una plataforma profesional para el análisis de arquitectura y deuda técnica en proyectos masivos de Visual Basic 6. Utiliza un motor de **Abstract Semantic Graph (ASG)** para visualizar dependencias exactas y detectar "Code Smells" mediante algoritmos avanzados de grafos.
 
-## 🚀 Características
+## 🚀 Características Principales
 
-- **Análisis de Deuda Técnica**: Detección automática de Código Muerto, God Objects y Ciclos de Dependencia.
-- **Visualización WebGL**: Dashboard interactivo capaz de manejar miles de nodos mediante **Sigma.js**.
-- **Motor de Grafo**: Basado en **NetworkX** para tracing de llamadas (`CALLS`), uso de variables (`USES`) y eventos UI (`TRIGGERS`).
-- **MCP Integration**: Expone herramientas de análisis para modelos de IA (Claude, GPT).
+- **Motor ASG de Alta Precisión**: Resolución de dependencias con conciencia de *Scope* (locales vs globales), manejo de *shadowing* y nombres calificados (`Objeto.Metodo`).
+- **Visualización 3D con WebGPU**: Dashboard inmersivo en 3D utilizando **Three.js** y la API **WebGPU** (con fallback a WebGL) para una fluidez total en grafos de miles de nodos.
+- **Métricas Arquitectónicas**: Cálculo automático de acoplamiento aferente/eferente (**Ca/Ce**) e **Inestabilidad (I)** por archivo para identificar puntos críticos de mantenimiento.
+- **Análisis de Deuda Técnica**: Detección de Código Muerto (reachability analysis), God Objects (centralidad de PageRank) y Ciclos de Dependencia.
+- **Reconstrucción Paralelizada**: Script de reconstrucción ultra-rápido que reconstruye el grafo desde SQLite usando todos los núcleos de la CPU.
+- **MCP Integration**: Expone herramientas de análisis para modelos de IA (Claude, GPT, Antigravity).
 
 ## 🛠️ Stack Tecnológico
 
-- **Backend**: Python 3.11+, Typer (CLI), FastAPI (API REST), NetworkX, SQLite.
-- **Frontend**: React 18, TypeScript, Vite, Sigma.js, Prism.js.
+- **Backend**: Python 3.11+, FastAPI, NetworkX, **python-igraph** (para layouts 3D rápidos), ANTLR4, SQLite.
+- **Frontend**: React 18, TypeScript, Vite, **Three.js (WebGPU)**, Sigma.js (para vista 2D), TailwindCSS.
 
 ## 📥 Instalación
 
@@ -29,10 +31,9 @@ VB6-Graph es una plataforma profesional para el análisis de arquitectura y deud
    python -m venv backend/.venv
    # Windows:
    backend\.venv\Scripts\activate
-   # Linux/MacOS:
-   source backend/.venv/bin/activate
-
+   # Instalar dependencias:
    pip install -r backend/requirements.txt
+   pip install python-igraph fastapi uvicorn
    ```
 
 3. **Frontend Setup**:
@@ -40,102 +41,72 @@ VB6-Graph es una plataforma profesional para el análisis de arquitectura y deud
    ```bash
    cd frontend
    npm install
-   npm run build
-   cd ..
    ```
 
-## 🎮 Guía de Uso
+## 🎮 Guía de Uso Actualizada
 
-El proyecto se gestiona íntegramente a través de la CLI unificada en `backend/main.py`.
+### 1. Parseo Inicial (Fase 1)
 
-### Fase 1: Parseo del Código
-
-Analiza un directorio de código VB6 y genera la base de datos y el grafo de arquitectura.
+Analiza el código fuente y genera la base de datos de conocimiento.
 
 ```bash
 python backend/main.py parse <directorio_proyecto_vb6>
 ```
 
-*Los archivos generados (`.db`, `.graphml`) se guardarán automáticamente en la carpeta `/output`.*
+### 2. Análisis Offline (Fase 2)
 
-### Fase 2: Análisis de Deuda Técnica
-
-Genera un informe detallado sobre la salud del código.
+Genera un reporte detallado de métricas (Inestabilidad, Ca/Ce) y "smells" directamente en tu consola y un archivo JSON.
 
 ```bash
 python backend/main.py analyze
 ```
 
-*Muestra un resumen por consola y genera un reporte JSON detallado en `/output` (ej. `Proyecto_analysis.json`).*
+### 3. Reconstrucción y Layout (Opcional/Rápido)
 
-### Fase 3: Dashboard Interactivo
+Si ya tienes la DB, puedes reconstruir el grafo y calcular el layout 3D sin volver a leer los archivos de disco:
 
-Inicia el ecosistema completo (API + UI).
+```bash
+python backend/reconstruct_graph.py output/tu_proyecto.db
+```
 
-1. **Terminal 1 (API)**:
+### 4. Iniciar Dashboard (API + Web)
+
+1. **Terminal 1 (Backend API)**:
 
    ```bash
-   python backend/main.py ui
+   python backend/api.py
    ```
 
-2. **Terminal 2 (Frontend)**:
+2. **Terminal 2 (Frontend React)**:
 
    ```bash
    cd frontend
    npm run dev
    ```
 
-*Accede a `http://localhost:5173` para explorar el grafo de arquitectura y visualizar el código fuente.*
-
-### Fase 4: Servidor MCP (Para IAs)
-
-Existen dos formas de interactuar con el servidor MCP:
-
-1. **Servidor Directo**: Para conectar con clientes MCP (como Claude Desktop o Antigravity).
-
-   ```bash
-   python backend/main.py mcp <directorio_proyecto_vb6>
-   ```
-
-2. **Inspector Manual (Web)**: Para probar las herramientas disponibles desde tu navegador.
-
-   ```bash
-   python backend/main.py inspect <directorio_proyecto_vb6>
-   ```
-
-   *Esto lanzará el **MCP Inspector** de Model Context Protocol. Sigue las instrucciones en la consola para abrir el navegador.*
+*Accede a `http://localhost:5173` (o el puerto indicado por Vite). Usa el botón **3D (Box)** en la barra lateral para cambiar de dimensión.*
 
 ## 🤖 Configuración del Agente (MCP)
 
-Para que tu IA (Claude Desktop, Antigravity, etc.) pueda usar estas herramientas automáticamente, debes configurar el archivo de configuración de MCP (ej. `mcp_config.json`).
-
-### Ejemplo de Configuración
-
-Debes usar rutas absolutas para el ejecutable de Python y el script del servidor:
+Configura tu archivo `mcp_config.json` para dar superpoderes a tu IA:
 
 ```json
 {
   "mcpServers": {
     "vb6-graph": {
       "command": "C:/Ruta/A/Tu/Proyecto/backend/.venv/Scripts/python.exe",
-      "args": [
-        "C:/Ruta/A/Tu/Proyecto/backend/mcp_server.py"
-      ],
-      "env": {
-        "PYTHONPATH": "C:/Ruta/A/Tu/Proyecto/backend"
-      }
+      "args": ["C:/Ruta/A/Tu/Proyecto/backend/mcp_server.py"],
+      "env": { "PYTHONPATH": "C:/Ruta/A/Tu/Proyecto/backend" }
     }
   }
 }
 ```
 
-*Nota: Asegúrate de usar barras normales `/` en las rutas, incluso en Windows, para evitar errores de escape de caracteres.*
-
 ## 📁 Estructura del Proyecto
 
-- `backend/`: Código Python (CLI, API, Parser, Analyzer).
-- `frontend/`: Aplicación React + Sigma.js para visualización.
-- `output/`: Directorio de salida para bases de datos, grafos y reportes de análisis.
+- `backend/`: Motor ASG, Analizador de métricas, API FastAPI y script de reconstrucción.
+- `frontend/`: Aplicación React con visualizadores Sigma.js (2D) y Three.js (3D).
+- `output/`: Directorio de salida para bases de datos (`.db`) y archivos de grafos (`.graphml`) generados.
 
 ## 📄 Licencia
 

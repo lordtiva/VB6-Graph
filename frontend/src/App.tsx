@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import GraphView, { TYPE_COLORS, LayoutType } from './components/GraphView';
+import GraphView3D from './components/GraphView3D';
 import CodeViewer from './components/CodeViewer';
 import AnalysisPanel from './components/AnalysisPanel';
 import { useDashboard } from './hooks/useDashboard';
-import { Layout, Code2, ShieldAlert, RefreshCw, Layers, Filter, Eye, EyeOff, ChevronDown, ChevronUp, Search, X, Shuffle, Circle, Network } from 'lucide-react';
+import { Layout, Code2, ShieldAlert, RefreshCw, Layers, Filter, Eye, EyeOff, Search, X, Network, Box, Monitor, Circle } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -22,6 +23,7 @@ const App: React.FC = () => {
   const [selectedLayout, setSelectedLayout] = useState<LayoutType>('forceAtlas2');
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [communityView, setCommunityView] = useState(false);
+  const [viewMode, setViewMode] = useState<'3D' | '2D'>('2D');
 
   // Derive unique node types from graph data
   const availableTypes = useMemo(() => {
@@ -49,10 +51,12 @@ const App: React.FC = () => {
     });
   };
 
-  const handleNodeClick = useCallback((id: string) => {
+  const handleNodeClick = useCallback((id: string | null) => {
     setFocusedNodeId(id);
-    fetchCode(id);
-    setActiveTab('code');
+    if (id) {
+      fetchCode(id);
+      setActiveTab('code');
+    }
   }, [fetchCode]);
 
   if (loading) {
@@ -72,9 +76,9 @@ const App: React.FC = () => {
           <Layout className="w-6 h-6 text-[#58a6ff]" />
         </div>
         <div className="h-px w-6 bg-[#30363d]" />
-        
-        <button 
-          onClick={() => setLegendOpen(!legendOpen)} 
+
+        <button
+          onClick={() => setLegendOpen(!legendOpen)}
           className={cn(
             "p-2 rounded-lg transition-all duration-200",
             legendOpen ? "bg-[#58a6ff]/10 text-[#58a6ff]" : "hover:bg-[#30363d] text-[#8b949e] hover:text-[#c9d1d9]"
@@ -85,8 +89,8 @@ const App: React.FC = () => {
         </button>
 
         <div className="relative">
-          <button 
-            onClick={() => setLayoutMenuOpen(!layoutMenuOpen)} 
+          <button
+            onClick={() => setLayoutMenuOpen(!layoutMenuOpen)}
             className={cn(
               "p-2 rounded-lg transition-all duration-200",
               layoutMenuOpen ? "bg-[#ffa657]/10 text-[#ffa657]" : "hover:bg-[#30363d] text-[#8b949e] hover:text-[#c9d1d9]"
@@ -96,7 +100,7 @@ const App: React.FC = () => {
             {selectedLayout === 'forceAtlas2' && <Network className="w-5 h-5" />}
             {selectedLayout === 'circular' && <Circle className="w-5 h-5" />}
           </button>
-          
+
           {layoutMenuOpen && (
             <div className="absolute left-14 top-0 w-48 bg-[#161b22] border border-[#30363d] rounded-xl shadow-2xl z-[100] p-1 animate-in slide-in-from-left-2 duration-200">
               {[
@@ -111,8 +115,8 @@ const App: React.FC = () => {
                   }}
                   className={cn(
                     "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-xs font-medium transition-colors text-left",
-                    selectedLayout === item.id 
-                      ? "bg-[#58a6ff]/10 text-[#58a6ff]" 
+                    selectedLayout === item.id
+                      ? "bg-[#58a6ff]/10 text-[#58a6ff]"
                       : "text-[#8b949e] hover:bg-[#30363d] hover:text-[#c9d1d9]"
                   )}
                 >
@@ -124,16 +128,16 @@ const App: React.FC = () => {
           )}
         </div>
 
-        <button 
-          onClick={() => refreshGraph()} 
+        <button
+          onClick={() => refreshGraph()}
           className="p-2 hover:bg-[#30363d] rounded-lg transition-colors text-[#8b949e] hover:text-[#c9d1d9]"
           title="Refresh Graph"
         >
           <RefreshCw className="w-5 h-5" />
         </button>
         {focusedNodeId && (
-          <button 
-            onClick={() => setFocusedNodeId(null)} 
+          <button
+            onClick={() => setFocusedNodeId(null)}
             className="p-2 bg-[#58a6ff]/20 text-[#58a6ff] hover:bg-[#58a6ff]/30 rounded-lg transition-all animate-in zoom-in duration-200"
             title="Clear Selection"
           >
@@ -141,8 +145,8 @@ const App: React.FC = () => {
           </button>
         )}
 
-        <button 
-          onClick={() => setCommunityView(!communityView)} 
+        <button
+          onClick={() => setCommunityView(!communityView)}
           className={cn(
             "p-2 rounded-lg transition-all duration-200",
             communityView ? "bg-[#7ee787]/10 text-[#7ee787]" : "hover:bg-[#30363d] text-[#8b949e] hover:text-[#c9d1d9]"
@@ -151,10 +155,21 @@ const App: React.FC = () => {
         >
           <Layers className="w-5 h-5" />
         </button>
+
+        <button
+          onClick={() => setViewMode(viewMode === '2D' ? '3D' : '2D')}
+          className={cn(
+            "p-2 rounded-lg transition-all duration-200",
+            viewMode === '3D' ? "bg-[#d2a8ff]/10 text-[#d2a8ff]" : "hover:bg-[#30363d] text-[#8b949e] hover:text-[#c9d1d9]"
+          )}
+          title={`Switch to ${viewMode === '2D' ? '3D' : '2D'} View`}
+        >
+          {viewMode === '2D' ? <Box className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+        </button>
       </div>
 
       {/* Filter Sidebar (Collapsible) */}
-      <div 
+      <div
         className={cn(
           "border-r border-[#30363d] bg-[#0d1117] transition-all duration-300 ease-in-out flex flex-col overflow-hidden",
           legendOpen ? "w-64 opacity-100" : "w-0 opacity-0 border-none"
@@ -166,7 +181,7 @@ const App: React.FC = () => {
             {availableTypes.length} TYPES
           </span>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
           {availableTypes.length === 0 && (
             <div className="p-8 text-center">
@@ -174,25 +189,25 @@ const App: React.FC = () => {
               <p className="text-xs text-[#8b949e]">Loading types...</p>
             </div>
           )}
-          
+
           {availableTypes.map((type) => {
             const color = TYPE_COLORS[type] || TYPE_COLORS.Unknown;
             const isHidden = hiddenTypes.has(type);
-            
+
             return (
               <button
                 key={type}
                 onClick={() => toggleTypeVisibility(type)}
                 className={cn(
                   "w-full flex items-center justify-between group px-3 py-2.5 rounded-lg transition-all border border-transparent",
-                  isHidden 
-                    ? "opacity-30 grayscale hover:opacity-60 hover:grayscale-0" 
+                  isHidden
+                    ? "opacity-30 grayscale hover:opacity-60 hover:grayscale-0"
                     : "hover:bg-[#161b22] hover:border-[#30363d] active:bg-[#21262d]"
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div 
-                    className="w-3 h-3 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.4)]" 
+                  <div
+                    className="w-3 h-3 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.4)]"
                     style={{ backgroundColor: color }}
                   />
                   <span className="text-xs font-medium text-[#c9d1d9] truncate max-w-[140px]">{type}</span>
@@ -247,7 +262,7 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-center w-10 h-10 shrink-0">
                   <Search className="w-4 h-4 text-[#8b949e]" />
                 </div>
-                <input 
+                <input
                   type="text"
                   placeholder="Search nodes (e.g. HandleLogin)..."
                   className="bg-transparent border-none outline-none text-xs text-[#c9d1d9] w-full pr-4 py-2"
@@ -256,7 +271,7 @@ const App: React.FC = () => {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
                 {searchQuery && (
-                  <button 
+                  <button
                     onClick={() => {
                       setSearchQuery('');
                       setFocusedNodeId(null);
@@ -290,7 +305,7 @@ const App: React.FC = () => {
                   ))}
                 </div>
               )}
-              
+
               {isSearchOpen && searchQuery && searchResults.length === 0 && (
                 <div className="w-72 bg-[#161b22] border border-[#30363d] rounded-xl p-4 text-center shadow-2xl">
                   <p className="text-xs text-[#8b949e] italic">No nodes found matching your query</p>
@@ -298,17 +313,27 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
-          
+
           {graphData && (
             <div className="w-full h-full">
-              <GraphView 
-                data={graphData} 
-                hiddenTypes={hiddenTypes}
-                onNodeClick={handleNodeClick} 
-                focusedNodeId={focusedNodeId}
-                layout={selectedLayout}
-                communityView={communityView}
-              />
+              {viewMode === '2D' ? (
+                <GraphView
+                  data={graphData}
+                  hiddenTypes={hiddenTypes}
+                  onNodeClick={handleNodeClick}
+                  focusedNodeId={focusedNodeId}
+                  layout={selectedLayout}
+                  communityView={communityView}
+                />
+              ) : (
+                <GraphView3D
+                  data={graphData}
+                  hiddenTypes={hiddenTypes}
+                  onNodeClick={handleNodeClick}
+                  focusedNodeId={focusedNodeId}
+                  communityView={communityView}
+                />
+              )}
             </div>
           )}
         </div>
@@ -317,7 +342,7 @@ const App: React.FC = () => {
         <div className="w-[30%] h-full min-w-0 flex flex-col bg-[#0d1117]">
           {/* Tabs */}
           <div className="flex border-b border-[#30363d] bg-[#161b22]">
-            <button 
+            <button
               onClick={() => setActiveTab('code')}
               className={cn(
                 "flex-1 flex items-center justify-center py-3 text-xs font-bold uppercase tracking-widest transition-all",
@@ -327,7 +352,7 @@ const App: React.FC = () => {
               <Code2 className="w-4 h-4 mr-2" />
               Source Code
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('analysis')}
               className={cn(
                 "flex-1 flex items-center justify-center py-3 text-xs font-bold uppercase tracking-widest transition-all",
@@ -344,7 +369,7 @@ const App: React.FC = () => {
             {activeTab === 'code' ? (
               <CodeViewer code={code} nodeId={selectedNodeId} />
             ) : (
-              <AnalysisPanel results={analysis} />
+              <AnalysisPanel results={analysis} onNodeClick={handleNodeClick} />
             )}
           </div>
         </div>

@@ -8,44 +8,50 @@ class CodeAnalyzer:
     def detect_dead_code(self):
         """
         Identifies dead code using reachability analysis.
-        Dead code consists of methods that are NOT reachable from "Entry Points".
-        Entry Points:
-        - Methods triggered by UI (TRIGGERS edges)
-        - Methods explicitly named "Main" or "Sub Main"
+        Enhanced for VB6/Argentum Online specific patterns.
         """
         # 1. Identify Entry Points
         entry_points = set()
         
-        # Nodes target of TRIGGERS (UI events)
+        # Nodes target of TRIGGERS (UI events) are entry points
         for u, v, d in self.graph.edges(data=True):
             if d.get('type') == 'TRIGGERS':
                 entry_points.add(v)
         
         # Common VB6/Argentum entry points
-        # We iterate through all nodes and add them if they match the criteria
         for n, d in self.graph.nodes(data=True):
             node_type = d.get('type')
-            node_name_lower = n.split(':')[-1].lower() if ':' in n else n.lower()
+            node_name = n.split(':')[-1] if ':' in n else n
+            node_name_lower = node_name.lower()
+            file_name = n.split(':')[0].lower() if ':' in n else ""
 
             if node_type == 'UIControl':
                 entry_points.add(n)
             elif node_type == 'Method':
-                # Methods named Main (case-insensitive)
-                if node_name_lower == "main":
+                # VB6/Argentum well-known entry points
+                if node_name_lower in ("main", "sub main", "form_load", "class_initialize", "class_terminate", "timer_timer"):
                     entry_points.add(n)
-                # Network/Protocol handlers, Events (Form_, Class_, Timer_), and Interface implementations
+                
+                # Protocol and Network handlers (Critical for Argentum)
                 elif (node_name_lower.startswith('handle') or 
-                      node_name_lower.startswith('event') or 
-                      '_' in node_name_lower or 
-                      node_name_lower in ['onserverrecv', 'receive', 'eventosockread', 'senddata']):
+                      node_name_lower.startswith('incomingdata') or
+                      node_name_lower.startswith('protocol_') or
+                      node_name_lower in ['onserverrecv', 'receive', 'eventosockread', 'senddata', 'server_main']):
+                    entry_points.add(n)
+                
+                # Public methods in .bas (Modules) are often entry points for the whole system
+                elif file_name.endswith('.bas') and not node_name_lower.startswith('_'):
+                    # To be conservative, we treat all public .bas methods as alive 
+                    # unless we are sure they are internally scoped (not the case in simple VB6)
                     entry_points.add(n)
 
         # 2. Perform reachability analysis (BFS/DFS)
         reachable_nodes = set()
         for ep in entry_points:
             if ep in self.graph:
-                reachable_nodes.add(ep)
-                reachable_nodes.update(nx.descendants(self.graph, ep))
+                if ep not in reachable_nodes:
+                    reachable_nodes.add(ep)
+                    reachable_nodes.update(nx.descendants(self.graph, ep))
 
         # 3. Dead methods are Methods NOT in reachable_nodes
         all_methods = [n for n, d in self.graph.nodes(data=True) if d.get('type') == 'Method']
@@ -187,12 +193,45 @@ class CodeAnalyzer:
             "external": list(external)
         }
 
+    def calculate_architectural_metrics(self):
+        """
+        Calcula métricas de calidad arquitectónica por archivo.
+        - Ca (Afferent Coupling): Cuántos archivos externos dependen de este.
+        - Ce (Efferent Coupling): De cuántos archivos externos depende este.
+        - I (Instability): Ce / (Ca + Ce). 0 = Estable, 1 = Inestable.
+        """
+        metrics = {}
+        files = [n for n, d in self.graph.nodes(data=True) if d.get('type') == 'File']
+        
+        # Colapsar a grafo de archivos
+        file_graph = nx.DiGraph()
+        file_graph.add_nodes_from(files)
+        for u, v, d in self.graph.edges(data=True):
+            if d.get('type') in ('CALLS', 'USES'):
+                file_u = u.split(':')[0] if ':' in u else u
+                file_v = v.split(':')[0] if ':' in v else v
+                if file_u in files and file_v in files and file_u != file_v:
+                    file_graph.add_edge(file_u, file_v)
+
+        for f in files:
+            ce = file_graph.out_degree(f)
+            ca = file_graph.in_degree(f)
+            instability = round(ce / (ca + ce), 2) if (ca + ce) > 0 else 0
+            metrics[f] = {
+                "afferent": ca,
+                "efferent": ce,
+                "instability": instability
+            }
+        
+        return metrics
+
     def get_analysis_summary(self):
         return {
             "dead_code": self.detect_dead_code(),
             "god_objects": self.detect_god_objects(),
             "circular_dependencies": self.detect_circular_dependencies(),
-            "communities": self.detect_communities()
+            "communities": self.detect_communities(),
+            "metrics": self.calculate_architectural_metrics()
         }
 
 if __name__ == "__main__":

@@ -28,9 +28,10 @@ export const useDashboard = () => {
   const fetchAnalysis = useCallback(async () => {
     try {
       const res = await axios.get('/api/analysis');
+      console.log('[Dashboard] Received analysis results:', res.data);
       setAnalysis(res.data);
     } catch (err) {
-      console.error('Error fetching analysis', err);
+      console.error('[Dashboard] Error fetching analysis', err);
     }
   }, []);
 

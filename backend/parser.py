@@ -163,6 +163,17 @@ class VB6Parser:
         # Add Project Node
         project_name = os.path.basename(directory.rstrip(os.sep))
         
+        # Rename DB to project name for better organization
+        new_db_path = os.path.join(os.path.dirname(get_db_name()), f"{project_name}.db")
+        if get_db_name() != new_db_path:
+            # Close existing connection before renaming
+            self.conn.close()
+            # If a generic db exists, rename it or just switch to new path
+            set_db_name(new_db_path)
+            init_db()
+            from db import get_connection
+            self.conn = get_connection()
+
         print(f"[*] Analyzing Project: {project_name}")
         self.graph.add_node(project_name, type="Project", label=project_name)
         self._save_node_batched(project_name, "Project", vbp_file, "")
@@ -205,31 +216,48 @@ class VB6Parser:
                     self.graph.add_edge(file_name, var_id, type="CONTAINS")
                     content = var.get("content", f"Public/Private {var_name}")
                     self._save_node_batched(var_id, "Variable", file_path, content)
-
+ 
                 # Add Methods
                 for method in res["methods"]:
                     method_name = method["name"]
                     method_id = f"{file_name}:{method_name}"
                     loc = (method["end"] - method["start"] + 1) if "end" in method else 1
-                    self.graph.add_node(method_id, type="Method", label=method_name, loc=loc)
+                    
+                    # Store scope information for ASG resolution
+                    locals_list = [l.lower() for l in method.get("locals", [])]
+                    params_list = [p.lower() for p in method.get("parameters", [])]
+                    
+                    self.graph.add_node(
+                        method_id, 
+                        type="Method", 
+                        label=method_name, 
+                        loc=loc,
+                        locals=locals_list,
+                        parameters=params_list
+                    )
                     self.graph.add_edge(file_name, method_id, type="CONTAINS")
                     self._save_node_batched(method_id, "Method", file_path, method["content"])
                     
                     if "calls" in method:
                         for target in method["calls"]:
                             self.graph.add_edge(method_id, target, type="CALL_PENDING")
-
+ 
                 # Add UI Controls
                 for control_name in res["ui_controls"]:
                     control_id = f"{file_name}:{control_name}"
                     self.graph.add_node(control_id, type="UIControl", label=control_name, loc=1)
                     self.graph.add_edge(file_name, control_id, type="CONTAINS")
                     self._save_node_batched(control_id, "UIControl", file_path, f"Begin {control_name}")
-
+ 
         # Phase 2: Build Relationships (CALLS, USES, TRIGGERS)
         print("[*] Building relationships (this may take a while)...")
         self.build_relationships()
         
+        # Save GraphML
+        graph_output = os.path.join(os.path.dirname(get_db_name()), f"{project_name}.graphml")
+        print(f"[*] Saving graph to {graph_output}")
+        nx.write_graphml(self.graph, graph_output)
+
         # Final commit and close
         self.conn.commit()
         self.conn.close()
@@ -258,12 +286,60 @@ class VB6Parser:
             # Resolve CALL_PENDING edges from ANTLR
             pending_edges = [(u, v) for u, v, d in self.graph.out_edges(method_id, data=True) if d.get('type') == 'CALL_PENDING']
             if pending_edges:
+                # Get local scope for this method
+                method_data = self.graph.nodes[method_id]
+                local_names = set(method_data.get('locals', []))
+                param_names = set(method_data.get('parameters', []))
+                
                 for u, target_name in pending_edges:
                     target_key = target_name.lower()
+                    
+                    # 1. Check Local Scope first (Shadowing resolution)
+                    if target_key in local_names or target_key in param_names:
+                        # It's a local usage, we don't link to global/module variables
+                        continue
+                        
+                    # 2. Check Global/Module Scope
                     if target_key in method_map:
                         self.graph.add_edge(method_id, method_map[target_key], type="CALLS")
                     elif target_key in variable_map:
                         self.graph.add_edge(method_id, variable_map[target_key], type="USES")
+                    elif "." in target_key:
+                        # Handle qualified names: Obj.Method or Form.Method
+                        parts = target_key.split(".")
+                        obj_name = parts[0]
+                        member_name = parts[-1]
+                        
+                        # Try to find the member in a specific file if obj_name matches a file/class
+                        # This is a heuristic: look for "obj_name:member_name"
+                        found_qualified = False
+                        
+                        # Check methods
+                        for m_id in methods:
+                            m_file, m_name = m_id.split(":", 1) if ":" in m_id else ("", m_id)
+                            m_file_base = m_file.split(".")[0].lower()
+                            if m_file_base == obj_name and m_name.lower() == member_name:
+                                self.graph.add_edge(method_id, m_id, type="CALLS")
+                                found_qualified = True
+                                break
+                        
+                        if not found_qualified:
+                            # Check variables
+                            for v_id in variables:
+                                v_file, v_name = v_id.split(":", 1) if ":" in v_id else ("", v_id)
+                                v_file_base = v_file.split(".")[0].lower()
+                                if v_file_base == obj_name and v_name.lower() == member_name:
+                                    self.graph.add_edge(method_id, v_id, type="USES")
+                                    found_qualified = True
+                                    break
+                        
+                        if not found_qualified:
+                            # Fallback: if we can't find the object, just try matching the member name globally
+                            # This maintains backward compatibility but is less precise
+                            if member_name in method_map:
+                                self.graph.add_edge(method_id, method_map[member_name], type="CALLS")
+                            elif member_name in variable_map:
+                                self.graph.add_edge(method_id, variable_map[member_name], type="USES")
                 
                 # Remove pending edges
                 for u, v in pending_edges:
@@ -375,7 +451,19 @@ class VB6Parser:
                     method_name = method["name"]
                     method_id = f"{file_name}:{method_name}"
                     loc = method["end"] - method["start"] + 1
-                    self.graph.add_node(method_id, type="Method", label=method_name, loc=loc)
+                    
+                    # Store scope information for ASG resolution
+                    locals_list = [l.lower() for l in method.get("locals", [])]
+                    params_list = [p.lower() for p in method.get("parameters", [])]
+                    
+                    self.graph.add_node(
+                        method_id, 
+                        type="Method", 
+                        label=method_name, 
+                        loc=loc,
+                        locals=locals_list,
+                        parameters=params_list
+                    )
                     self.graph.add_edge(file_name, method_id, type="CONTAINS")
                     self._save_node_batched(method_id, "Method", file_path, method["content"])
                     

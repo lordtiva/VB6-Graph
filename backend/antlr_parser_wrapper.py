@@ -24,127 +24,92 @@ class VB6AntlrVisitor(VisualBasic6ParserVisitor):
         self.calls = []
         self.current_method = None
 
-    def visitSubStmt(self, ctx: VisualBasic6Parser.SubStmtContext):
-        name = ctx.ambiguousIdentifier().getText()
-        method_info = {
+    def _create_method_info(self, name, method_type, ctx):
+        return {
             "name": name,
-            "type": "Sub",
+            "type": method_type,
             "start": ctx.start.line,
             "end": ctx.stop.line,
             "content": ctx.getText(),
-            "calls": []
+            "calls": [],
+            "locals": [],
+            "parameters": []
         }
+
+    def _visit_method(self, ctx, method_type):
+        name = ctx.ambiguousIdentifier().getText()
+        method_info = self._create_method_info(name, method_type, ctx)
         self.methods.append(method_info)
         
         old_method = self.current_method
         self.current_method = method_info
+        
+        # Track parameters if available
+        if hasattr(ctx, 'argList') and ctx.argList():
+            for arg in ctx.argList().arg():
+                arg_name = arg.ambiguousIdentifier().getText()
+                self.current_method["parameters"].append(arg_name)
+        
         res = self.visitChildren(ctx)
         self.current_method = old_method
         return res
+
+    def visitSubStmt(self, ctx: VisualBasic6Parser.SubStmtContext):
+        return self._visit_method(ctx, "Sub")
 
     def visitFunctionStmt(self, ctx: VisualBasic6Parser.FunctionStmtContext):
-        name = ctx.ambiguousIdentifier().getText()
-        method_info = {
-            "name": name,
-            "type": "Function",
-            "start": ctx.start.line,
-            "end": ctx.stop.line,
-            "content": ctx.getText(),
-            "calls": []
-        }
-        self.methods.append(method_info)
-        
-        old_method = self.current_method
-        self.current_method = method_info
-        res = self.visitChildren(ctx)
-        self.current_method = old_method
-        return res
+        return self._visit_method(ctx, "Function")
 
     def visitPropertyGetStmt(self, ctx: VisualBasic6Parser.PropertyGetStmtContext):
-        name = ctx.ambiguousIdentifier().getText()
-        method_info = {
-            "name": name,
-            "type": "Property Get",
-            "start": ctx.start.line,
-            "end": ctx.stop.line,
-            "content": ctx.getText(),
-            "calls": []
-        }
-        self.methods.append(method_info)
-        
-        old_method = self.current_method
-        self.current_method = method_info
-        res = self.visitChildren(ctx)
-        self.current_method = old_method
-        return res
+        return self._visit_method(ctx, "Property Get")
 
     def visitPropertyLetStmt(self, ctx: VisualBasic6Parser.PropertyLetStmtContext):
-        name = ctx.ambiguousIdentifier().getText()
-        method_info = {
-            "name": name,
-            "type": "Property Let",
-            "start": ctx.start.line,
-            "end": ctx.stop.line,
-            "content": ctx.getText(),
-            "calls": []
-        }
-        self.methods.append(method_info)
-        
-        old_method = self.current_method
-        self.current_method = method_info
-        res = self.visitChildren(ctx)
-        self.current_method = old_method
-        return res
+        return self._visit_method(ctx, "Property Let")
 
     def visitPropertySetStmt(self, ctx: VisualBasic6Parser.PropertySetStmtContext):
-        name = ctx.ambiguousIdentifier().getText()
-        method_info = {
-            "name": name,
-            "type": "Property Set",
-            "start": ctx.start.line,
-            "end": ctx.stop.line,
-            "content": ctx.getText(),
-            "calls": []
-        }
-        self.methods.append(method_info)
-        
-        old_method = self.current_method
-        self.current_method = method_info
-        res = self.visitChildren(ctx)
-        self.current_method = old_method
-        return res
+        return self._visit_method(ctx, "Property Set")
 
     def visitVariableSubStmt(self, ctx: VisualBasic6Parser.VariableSubStmtContext):
         name = ctx.ambiguousIdentifier().getText()
         if self.current_method is None:
             # Module level variable
             self.variables.append({"name": name, "type": "Variable", "scope": "Module"})
+        else:
+            # Local variable
+            self.current_method["locals"].append(name)
         return self.visitChildren(ctx)
 
-    def _add_call(self, name):
+    def _add_reference(self, name):
+        if not name: return
+        # Logic to avoid adding keywords or very short/invalid names if necessary
         if self.current_method:
-            self.current_method["calls"].append(name)
+            if name not in self.current_method["calls"]:
+                self.current_method["calls"].append(name)
         else:
-            self.calls.append(name)
+            if name not in self.calls:
+                self.calls.append(name)
 
     def visitExplicitCallStmt(self, ctx: VisualBasic6Parser.ExplicitCallStmtContext):
-        self._add_call(ctx.getText().replace("Call ", "").split("(")[0].strip())
+        # Call Something(...)
+        text = ctx.getText().replace("Call ", "").split("(")[0].strip()
+        self._add_reference(text)
         return self.visitChildren(ctx)
 
     def visitICS_B_ProcedureCall(self, ctx: VisualBasic6Parser.ICS_B_ProcedureCallContext):
-        self._add_call(ctx.certainIdentifier().getText())
+        self._add_reference(ctx.certainIdentifier().getText())
         return self.visitChildren(ctx)
 
     def visitICS_S_ProcedureOrArrayCall(self, ctx: VisualBasic6Parser.ICS_S_ProcedureOrArrayCallContext):
-        self._add_call(ctx.ambiguousIdentifier().getText())
+        self._add_reference(ctx.ambiguousIdentifier().getText())
         return self.visitChildren(ctx)
 
     def visitICS_S_VariableOrProcedureCall(self, ctx: VisualBasic6Parser.ICS_S_VariableOrProcedureCallContext):
-        self._add_call(ctx.ambiguousIdentifier().getText())
+        self._add_reference(ctx.ambiguousIdentifier().getText())
         return self.visitChildren(ctx)
 
     def visitICS_S_MemberCall(self, ctx: VisualBasic6Parser.ICS_S_MemberCallContext):
-        self._add_call(ctx.getText().split("(")[0].strip())
+        # Obj.Member
+        self._add_reference(ctx.getText().split("(")[0].strip())
         return self.visitChildren(ctx)
 
 from antlr4.atn.PredictionMode import PredictionMode
@@ -152,6 +117,14 @@ from antlr4.atn.PredictionMode import PredictionMode
 class AntlrParserWrapper:
     def parse_file(self, file_path):
         input_stream = FileStream(file_path, encoding='latin-1')
+        return self._parse_stream(input_stream)
+
+    def parse_content(self, content):
+        from antlr4 import InputStream
+        input_stream = InputStream(content)
+        return self._parse_stream(input_stream)
+
+    def _parse_stream(self, input_stream):
         lexer = VisualBasic6Lexer(input_stream)
         lexer.removeErrorListeners()
         lexer.addErrorListener(SilentErrorListener())
@@ -173,7 +146,7 @@ class AntlrParserWrapper:
             try:
                 tree = parser.startRule()
             except Exception:
-                # If both fail, we return empty so Parser.py can trigger Regex fallback
+                # If both fail, we return empty
                 return {"methods": [], "variables": [], "calls": []}
         
         visitor = VB6AntlrVisitor()

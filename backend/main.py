@@ -94,6 +94,13 @@ def analyze(graph_file: Optional[str] = typer.Option(None, help="Archivo .graphm
         typer.echo(f"  - {' -> '.join(cycle)}")
     if len(results['circular_dependencies']) > 5: typer.echo(f"  ... y {len(results['circular_dependencies'])-5} más.")
     
+    if 'metrics' in results:
+        typer.echo("\n[!] Métricas Arquitectónicas (Top Inestabilidad):")
+        # Sort files by instability descending
+        sorted_metrics = sorted(results['metrics'].items(), key=lambda x: x[1]['instability'], reverse=True)
+        for f, m in sorted_metrics[:5]:
+            typer.echo(f"  - {f}: I={m['instability']} (Ca={m['afferent']}, Ce={m['efferent']})")
+
     typer.echo(f"\n[+] Reporte completo guardado en: {report_path}")
 
 @app.command()
