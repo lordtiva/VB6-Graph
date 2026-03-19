@@ -40,4 +40,9 @@ export interface AnalysisResults {
   }>;
   circular_dependencies: string[][];
   communities?: Record<string, number>;
+  metrics: Record<string, {
+    afferent: number;
+    efferent: number;
+    instability: number;
+  }>;
 }

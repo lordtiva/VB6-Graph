@@ -5,7 +5,7 @@ import forceAtlas2 from 'graphology-layout-forceatlas2';
 import circular from 'graphology-layout/circular';
 import { GraphData, NodeAttributes } from '../types';
 
-export type LayoutType = 'forceAtlas2' | 'circular';
+export type LayoutType = 'forceAtlas2' | 'circular' | 'static';
 
 interface GraphViewProps {
   data: GraphData;
@@ -106,10 +106,12 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
     if (!rendererRef.current) return;
     const graph = rendererRef.current.getGraph();
 
+    if (layout === 'static') return;
+
     if (layout === 'circular') {
       circular.assign(graph);
       rendererRef.current.refresh();
-    } else {
+    } else if (layout === 'forceAtlas2') {
       // Small timeout to allow the browser to paint the initial graph before the heavy math
       setTimeout(() => {
         if (!rendererRef.current) return;
@@ -126,7 +128,7 @@ const GraphView: React.FC<GraphViewProps> = ({ data, onNodeClick, hiddenTypes, f
         rendererRef.current.refresh();
       }, 100);
     }
-  }, [layout, data]); // Also run on data change to ensure layout is applied to new nodes
+  }, [layout]); // REMOVED data to only run when layout type changes explicitly
 
   // Handle camera focus on search
   useEffect(() => {

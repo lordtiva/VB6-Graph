@@ -20,7 +20,7 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [selectedLayout, setSelectedLayout] = useState<LayoutType>('forceAtlas2');
+  const [selectedLayout, setSelectedLayout] = useState<LayoutType>('static');
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [communityView, setCommunityView] = useState(false);
   const [viewMode, setViewMode] = useState<'3D' | '2D'>('2D');
@@ -99,11 +99,13 @@ const App: React.FC = () => {
           >
             {selectedLayout === 'forceAtlas2' && <Network className="w-5 h-5" />}
             {selectedLayout === 'circular' && <Circle className="w-5 h-5" />}
+            {selectedLayout === 'static' && <Monitor className="w-5 h-5" />}
           </button>
 
           {layoutMenuOpen && (
             <div className="absolute left-14 top-0 w-48 bg-[#161b22] border border-[#30363d] rounded-xl shadow-2xl z-[100] p-1 animate-in slide-in-from-left-2 duration-200">
               {[
+                { id: 'static', label: 'Static (Pre-computed)', icon: Monitor },
                 { id: 'forceAtlas2', label: 'Force Atlas (Structural)', icon: Network },
                 { id: 'circular', label: 'Circular (Radial)', icon: Circle }
               ].map((item) => (
@@ -176,8 +178,8 @@ const App: React.FC = () => {
         )}
       >
         <div className="p-4 border-b border-[#30363d] bg-[#161b22]/50 flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-[#8b949e]">Filters</h2>
-          <span className="bg-[#58a6ff]/10 text-[#58a6ff] text-[10px] px-1.5 py-0.5 rounded font-bold">
+          <h2 className="text-[12px] font-bold uppercase tracking-widest text-[#8b949e]">Filters</h2>
+          <span className="bg-[#58a6ff]/10 text-[#58a6ff] text-[11px] px-1.5 py-0.5 rounded font-bold">
             {availableTypes.length} TYPES
           </span>
         </div>
@@ -186,7 +188,7 @@ const App: React.FC = () => {
           {availableTypes.length === 0 && (
             <div className="p-8 text-center">
               <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-[#30363d]" />
-              <p className="text-xs text-[#8b949e]">Loading types...</p>
+              <p className="text-[12px] text-[#8b949e]">Loading types...</p>
             </div>
           )}
 
@@ -210,7 +212,7 @@ const App: React.FC = () => {
                     className="w-3 h-3 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.4)]"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="text-xs font-medium text-[#c9d1d9] truncate max-w-[140px]">{type}</span>
+                  <span className="text-[12px] font-medium text-[#c9d1d9] truncate max-w-[140px]">{type}</span>
                 </div>
                 <div className="flex items-center">
                   {isHidden ? (
@@ -226,11 +228,11 @@ const App: React.FC = () => {
 
         {graphData && (
           <div className="p-4 border-t border-[#30363d] bg-[#161b22]/30 space-y-2">
-            <div className="flex justify-between text-[10px] font-bold uppercase tracking-tighter text-[#8b949e]">
+            <div className="flex justify-between text-[11px] font-bold uppercase tracking-tighter text-[#8b949e]">
               <span>Nodes</span>
               <span className="text-[#c9d1d9]">{graphData.nodes.length}</span>
             </div>
-            <div className="flex justify-between text-[10px] font-bold uppercase tracking-tighter text-[#8b949e]">
+            <div className="flex justify-between text-[11px] font-bold uppercase tracking-tighter text-[#8b949e]">
               <span>Edges</span>
               <span className="text-[#c9d1d9]">{graphData.edges.length}</span>
             </div>
@@ -274,7 +276,7 @@ const App: React.FC = () => {
                   <button
                     onClick={() => {
                       setSearchQuery('');
-                      setFocusedNodeId(null);
+                      setIsSearchOpen(false);
                     }}
                     className="p-2 hover:bg-[#30363d] transition-colors"
                   >
@@ -290,9 +292,9 @@ const App: React.FC = () => {
                     <button
                       key={result.key}
                       onClick={() => {
-                        setFocusedNodeId(result.key);
-                        fetchCode(result.key);
-                        setActiveTab('code');
+                        handleNodeClick(result.key);
+                        setSearchQuery('');
+                        setIsSearchOpen(false);
                       }}
                       className={cn(
                         "w-full px-4 py-3 flex flex-col items-start gap-1 hover:bg-[#30363d] transition-colors text-left border-b border-[#30363d]/50 last:border-none",
